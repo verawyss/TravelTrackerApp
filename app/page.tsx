@@ -12,7 +12,27 @@ export default function TravelTrackerPro() {
   const [packingItems, setPackingItems] = useState<PackingItem[]>([])
   const [selectedDay, setSelectedDay] = useState(1)
   const [loading, setLoading] = useState(true)
+  
+// Neue Modal States
+const [showAddExpenseModal, setShowAddExpenseModal] = useState(false)
+const [showAddActivityModal, setShowAddActivityModal] = useState(false)
 
+// Neue Form States
+const [newExpense, setNewExpense] = useState({
+  category: 'Sonstiges',
+  description: '',
+  amount: 0,
+  paid_by: 'Max',
+  split_between: ['Max', 'Anna', 'Tom']
+})
+  
+const [newActivity, setNewActivity] = useState({
+  day: 1,
+  time: '10:00',
+  title: '',
+  details: '',
+  type: 'Aktivität'
+})
   // V2 Features - Neue States
   const [allUserTrips, setAllUserTrips] = useState<any[]>([])
   const [tripMembers, setTripMembers] = useState<any[]>([])
@@ -314,6 +334,220 @@ export default function TravelTrackerPro() {
 
   // Get expense icon
   const getExpenseIcon = (category: string) => {
+    // Neue Reise erstellen
+const createNewTrip = async () => {
+  if (!newTripData.name || !newTripData.destination) {
+    alert('❌ Bitte Name und Ziel eingeben!')
+    return
+  }
+
+  try {
+    const { data: tripData, error: tripError } = await supabase
+      .from('trips')
+      .insert({
+        ...newTripData,
+        status: 'active',
+        created_by: currentUser.id
+      })
+      .select()
+      .single()
+
+    if (tripError) throw tripError
+
+    await supabase.from('trip_members').insert({
+      trip_id: tripData.id,
+      user_id: currentUser.id,
+      role: 'owner'
+    })
+
+    setShowNewTripModal(false)
+    setCurrentTrip(tripData)
+    await loadData()
+    alert('✅ Reise erstellt!')
+  } catch (error) {
+    alert('❌ Fehler: ' + (error as Error).message)
+  }
+}
+
+// Ausgabe hinzufügen
+const createExpense = async () => {
+  if (!currentTrip || !newExpense.description || newExpense.amount <= 0) {
+    alert('❌ Bitte alle Felder ausfüllen!')
+    return
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('expenses')
+      .insert({
+        trip_id: currentTrip.id,
+        ...newExpense
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    setExpenses([...expenses, data])
+    setShowAddExpenseModal(false)
+    setNewExpense({
+      category: 'Sonstiges',
+      description: '',
+      amount: 0,
+      paid_by: 'Max',
+      split_between: ['Max', 'Anna', 'Tom']
+    })
+    alert('✅ Ausgabe hinzugefügt!')
+  } catch (error) {
+    alert('❌ Fehler: ' + (error as Error).message)
+  }
+}
+
+// Aktivität hinzufügen
+const createActivity = async () => {
+  if (!currentTrip || !newActivity.title) {
+    alert('❌ Bitte Titel eingeben!')
+    return
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('itinerary')
+      .insert({
+        trip_id: currentTrip.id,
+        ...newActivity
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    setItineraryItems([...itineraryItems, data])
+    setShowAddActivityModal(false)
+    setNewActivity({
+      day: 1,
+      time: '10:00',
+      title: '',
+      details: '',
+      type: 'Aktivität'
+    })
+    alert('✅ Aktivität hinzugefügt!')
+  } catch (error) {
+    alert('❌ Fehler: ' + (error as Error).message)
+  }
+}
+
+// Einladung senden
+const sendInvitation = async () => {
+  if (!currentTrip || !inviteEmail.includes('@')) {
+    alert('❌ Bitte gültige E-Mail eingeben!')
+    return
+  }
+
+  try {
+    const token = Math.random().toString(36).substring(2, 15)
+    
+    await supabase.from('invitations').insert({
+      trip_id: currentTrip.id,
+      invited_by: currentUser.id,
+      invited_email: inviteEmail,
+      token,
+      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      status: 'pending'
+    })
+
+    const link = `${window.location.origin}/invite/${token}`
+    await navigator.clipboard.writeText(link)
+    
+    alert(`✅ Einladung erstellt!\n\n📋 Link kopiert:\n${link}`)
+    setShowInviteModal(false)
+    setInviteEmail('')
+  } catch (error) {
+    alert('❌ Fehler: ' + (error as Error).message)
+  }
+}
+
+// Ort hinzufügen
+const addLocation = async () => {
+  if (!currentTrip || !newLocation.name || !newLocation.address) {
+    alert('❌ Bitte Name und Adresse eingeben!')
+    return
+  }
+
+  try {
+    const coords = await geocodeAddress(newLocation.address)
+    if (!coords) {
+      alert('❌ Adresse nicht gefunden!')
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('locations')
+      .insert({
+        trip_id: currentTrip.id,
+        name: newLocation.name,
+        address: newLocation.address,
+        latitude: coords.lat,
+        longitude: coords.lng,
+        type: newLocation.type,
+        notes: newLocation.notes
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    setLocations([...locations, data])
+    setShowAddLocationModal(false)
+    setNewLocation({ name: '', address: '', type: 'activity', notes: '' })
+    alert('✅ Ort hinzugefügt!')
+  } catch (error) {
+    alert('❌ Fehler: ' + (error as Error).message)
+  }
+}
+
+// Geocoding Helper
+async function geocodeAddress(address: string) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`
+    )
+    const data = await res.json()
+    return data[0] ? { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) } : null
+  } catch {
+    return null
+  }
+}
+
+// Zwischen Reisen wechseln
+const switchToTrip = async (trip: Trip) => {
+  setCurrentTrip(trip)
+  setActiveTab('overview')
+  await loadData()
+  alert(`✅ Gewechselt zu: ${trip.name}`)
+}
+
+// Alle User-Reisen laden
+const loadAllTrips = async () => {
+  try {
+    const { data } = await supabase
+      .from('trip_members')
+      .select('*, trip:trips(*), members:trip_members(*, user:users(*))')
+      .eq('user_id', currentUser.id)
+    
+    if (data) {
+      setAllUserTrips(data.map((item: any) => ({
+        ...item.trip,
+        members: item.members,
+        member_count: item.members?.length || 0,
+        user_role: item.role
+      })))
+    }
+  } catch (error) {
+    console.error('Error:', error)
+  }
+}
+  
     const icons: { [key: string]: string } = {
       'Transport': '✈️',
       'Unterkunft': '🏨',
@@ -324,6 +558,7 @@ export default function TravelTrackerPro() {
     }
     return icons[category] || '💰'
   }
+
 
   if (loading) {
     return (
@@ -344,7 +579,7 @@ export default function TravelTrackerPro() {
           </p>
           <button 
             className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-6 py-3 rounded-full font-semibold hover:shadow-lg transition-all"
-            onClick={() => alert('In der Vollversion kannst du hier eine neue Reise erstellen!')}
+            onClick={() => setShowAddExpenseModal(true)}
           >
             ➕ Neue Reise erstellen
           </button>
@@ -532,7 +767,52 @@ function renderExpenses() {
   })
 
   const categories = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])
-
+{showAddExpenseModal && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-3xl p-6 max-w-md w-full">
+      <div className="flex items-center justify-between mb-5">
+        <h3 className="text-xl font-bold">💰 Neue Ausgabe</h3>
+        <button onClick={() => setShowAddExpenseModal(false)} className="text-2xl">×</button>
+      </div>
+      
+      <div className="space-y-4">
+        <input
+          type="text"
+          placeholder="Beschreibung"
+          value={newExpense.description}
+          onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
+          className="w-full p-3 border-2 border-gray-200 rounded-xl"
+        />
+        <input
+          type="number"
+          placeholder="Betrag"
+          value={newExpense.amount}
+          onChange={(e) => setNewExpense({...newExpense, amount: parseFloat(e.target.value)})}
+          className="w-full p-3 border-2 border-gray-200 rounded-xl"
+        />
+        <select
+          value={newExpense.category}
+          onChange={(e) => setNewExpense({...newExpense, category: e.target.value})}
+          className="w-full p-3 border-2 border-gray-200 rounded-xl"
+        >
+          <option>Transport</option>
+          <option>Unterkunft</option>
+          <option>Essen</option>
+          <option>Aktivität</option>
+          <option>Shopping</option>
+          <option>Sonstiges</option>
+        </select>
+        <button
+          onClick={createExpense}
+          className="w-full bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white py-3 rounded-xl font-semibold"
+        >
+          ✨ Hinzufügen
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+  
   return (
     <div>
       <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg mb-5">
