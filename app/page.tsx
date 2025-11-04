@@ -393,10 +393,6 @@ export default function TravelTrackerPro() {
     </div>
   )
 
-  // This function will be implemented in the next file part
-  // This is part 2 of app/page.tsx - the render functions
-// Copy this content and paste it INSIDE the TravelTrackerPro component, replacing the renderTabContent placeholder
-
 function renderTabContent() {
   switch (activeTab) {
     case 'overview':
