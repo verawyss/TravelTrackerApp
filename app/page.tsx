@@ -825,7 +825,7 @@ function renderExpenses() {
           <h3 className="text-lg font-bold text-gray-800">Alle Ausgaben</h3>
           <button 
             className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-4 py-2 rounded-full text-sm font-semibold"
-            onClick={() => alert('In der Vollversion kannst du hier neue Ausgaben hinzufügen!')}
+            onClick={() => setShowAddExpenseModal(true)} 
           >
             + Neu
           </button>
@@ -2015,12 +2015,12 @@ function renderTripsManagement() {
       {/* Header */}
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-xl font-bold text-gray-800">Meine Reisen</h2>
-        <button
-          onClick={() => setShowNewTripModal(true)}
-          className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-4 py-2 rounded-full text-sm font-semibold hover:shadow-lg transition-all"
-        >
-          ➕ Neue Reise
-        </button>
+        <button 
+  className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-6 py-3 rounded-full font-semibold hover:shadow-lg transition-all"
+  onClick={() => setShowNewTripModal(true)}
+>
+  ➕ Neue Reise erstellen
+</button>
       </div>
 
       {/* Active Trips */}
