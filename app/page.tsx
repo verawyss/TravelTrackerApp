@@ -88,38 +88,75 @@ export default function TravelTrackerApp() {
     type: 'Aktivität'
   })
 
-  // ========== AUTH FUNCTIONS ==========
+  // ========== AUTH FUNCTIONS - FIXED ==========
   
-  // Check authentication status on mount
+  // ✅ FIX: Auth State Listener statt checkAuth
   useEffect(() => {
-    checkAuth()
-  }, [])
-
-  const checkAuth = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      
+    // Initial Session Check
+    supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single()
+        loadUserData(session.user.id)
+      } else {
+        setIsLoading(false)
+      }
+    })
+
+    // Auth State Listener - reagiert auf Login/Logout
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth event:', event, session?.user?.email)
         
-        if (userData) {
-          setCurrentUser(userData)
+        if (event === 'SIGNED_IN' && session) {
+          await loadUserData(session.user.id)
           setIsAuthenticated(true)
-          loadInitialData()
+          setIsLoading(false)
+        } else if (event === 'SIGNED_OUT') {
+          setCurrentUser(null)
+          setIsAuthenticated(false)
+          setAllUserTrips([])
+          setCurrentTrip(null)
+          setIsLoading(false)
+        } else if (event === 'TOKEN_REFRESHED') {
+          console.log('Token refreshed')
         }
       }
+    )
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  // ✅ NEU: Separate Funktion zum Laden der User-Daten
+  const loadUserData = async (userId: string) => {
+    try {
+      const { data: userData, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single()
+      
+      if (error) {
+        console.error('Error loading user data:', error)
+        throw error
+      }
+
+      if (userData) {
+        setCurrentUser(userData)
+        setIsAuthenticated(true)
+        // Lade Trips und andere Daten
+        await loadInitialData(userData)
+      }
     } catch (error) {
-      console.error('Auth check error:', error)
-    } finally {
-      setIsLoading(false)
+      console.error('Failed to load user data:', error)
+      setAuthMessage({ 
+        type: 'error', 
+        text: '❌ Fehler beim Laden der Benutzerdaten. Bitte melde dich erneut an.' 
+      })
     }
   }
 
-  // Login
+  // ✅ FIX: Einfacherer Login ohne direktes User-Laden
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoadingUserAction(true)
@@ -133,23 +170,11 @@ export default function TravelTrackerApp() {
 
       if (error) throw error
 
-      // Lade User-Daten
-      const { data: userData } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', data.user.id)
-        .single()
-
-      setCurrentUser(userData)
-      setIsAuthenticated(true)
+      // ✅ Der Auth State Listener übernimmt jetzt das Laden der User-Daten
       setAuthMessage({ type: 'success', text: '✅ Erfolgreich eingeloggt!' })
-      
-      // Daten laden
-      setTimeout(() => {
-        loadInitialData()
-      }, 500)
 
     } catch (error: any) {
+      console.error('Login error:', error)
       setAuthMessage({ type: 'error', text: `❌ Fehler: ${error.message}` })
     } finally {
       setLoadingUserAction(false)
@@ -162,6 +187,7 @@ export default function TravelTrackerApp() {
     setIsAuthenticated(false)
     setCurrentUser(null)
     setCredentials({ email: '', password: '' })
+    setAuthMessage(null)
   }
 
   // Password Reset
@@ -190,23 +216,25 @@ export default function TravelTrackerApp() {
   }
 
   // ========== LOAD DATA ==========
-  const loadInitialData = async () => {
-    if (!currentUser) return
+  const loadInitialData = async (user?: any) => {
+    const userData = user || currentUser
+    if (!userData) return
     
-    await loadAllTrips()
-    if (currentUser.role === 'admin') {
+    await loadAllTrips(userData)
+    if (userData.role === 'admin') {
       await loadUsers()
     }
   }
 
-  const loadAllTrips = async () => {
-    if (!currentUser) return
+  const loadAllTrips = async (user?: any) => {
+    const userData = user || currentUser
+    if (!userData) return
 
     try {
       const { data, error } = await supabase
         .from('trips')
         .select('*, trip_members(*)')
-        .or(`created_by.eq.${currentUser.id},trip_members.user_id.eq.${currentUser.id}`)
+        .or(`created_by.eq.${userData.id},trip_members.user_id.eq.${userData.id}`)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -225,33 +253,54 @@ export default function TravelTrackerApp() {
 
   const loadTripData = async (tripId: string) => {
     try {
-      const [expensesRes, itineraryRes, packingRes, membersRes, locationsRes] = await Promise.all([
-        supabase.from('expenses').select('*').eq('trip_id', tripId),
-        supabase.from('itinerary').select('*').eq('trip_id', tripId).order('day', { ascending: true }),
-        supabase.from('packing_list').select('*').eq('trip_id', tripId),
-        supabase.from('trip_members').select('*, user:users(*)').eq('trip_id', tripId),
-        supabase.from('locations').select('*').eq('trip_id', tripId)
-      ])
+      // Lade Expenses
+      const { data: expensesData } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('date', { ascending: false })
 
-      if (expensesRes.data) setExpenses(expensesRes.data)
-      if (itineraryRes.data) setItineraryItems(itineraryRes.data)
-      if (packingRes.data) setPackingLists(packingRes.data)
-      if (membersRes.data) setTripMembers(membersRes.data)
-      if (locationsRes.data) setLocations(locationsRes.data)
+      if (expensesData) setExpenses(expensesData)
 
-      calculateSettlements()
+      // Lade Itinerary
+      const { data: itineraryData } = await supabase
+        .from('itinerary')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('day', { ascending: true })
+
+      if (itineraryData) setItineraryItems(itineraryData)
+
+      // Lade Packing List
+      const { data: packingData } = await supabase
+        .from('packing_list')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('category', { ascending: true })
+
+      if (packingData) setPackingLists(packingData)
+
+      // Lade Trip Members
+      const { data: membersData } = await supabase
+        .from('trip_members')
+        .select('*, users(*)')
+        .eq('trip_id', tripId)
+
+      if (membersData) setTripMembers(membersData)
+
+      // Lade Locations
+      const { data: locationsData } = await supabase
+        .from('locations')
+        .select('*')
+        .eq('trip_id', tripId)
+
+      if (locationsData) setLocations(locationsData)
+
     } catch (error) {
       console.error('Error loading trip data:', error)
     }
   }
 
-  const calculateSettlements = () => {
-    // Deine bestehende Settlement-Logik hier
-    setSettlements([])
-  }
-
-  // ========== ADMIN USER MANAGEMENT ==========
-  
   const loadUsers = async () => {
     try {
       const { data, error } = await supabase
@@ -260,90 +309,116 @@ export default function TravelTrackerApp() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setUsers(data || [])
+      if (data) setUsers(data)
     } catch (error) {
-      console.error('Fehler beim Laden der Benutzer:', error)
+      console.error('Error loading users:', error)
     }
   }
 
+  // ========== USER MANAGEMENT (Admin only) ==========
+
   const createUser = async () => {
     if (!newUser.email || !newUser.password || !newUser.name) {
-      alert('❌ Bitte alle Felder ausfüllen!')
+      setAuthMessage({ type: 'error', text: '❌ Bitte fülle alle Felder aus!' })
       return
     }
 
     if (newUser.password.length < 6) {
-      alert('❌ Passwort muss mindestens 6 Zeichen lang sein!')
+      setAuthMessage({ type: 'error', text: '❌ Passwort muss mindestens 6 Zeichen haben!' })
       return
     }
 
     setLoadingUserAction(true)
+    setAuthMessage(null)
 
     try {
-      // Verwende die API Route für Admin-User-Erstellung
       const response = await fetch('/api/admin/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newUser)
       })
 
-      const data = await response.json()
+      const result = await response.json()
 
-      if (!response.ok) throw new Error(data.error)
+      if (!response.ok) {
+        throw new Error(result.error || 'Fehler beim Erstellen des Benutzers')
+      }
 
-      alert('✅ Benutzer erfolgreich erstellt!')
+      setAuthMessage({ 
+        type: 'success', 
+        text: '✅ Benutzer erfolgreich erstellt!' 
+      })
+
       setShowAddUserModal(false)
       setNewUser({ email: '', password: '', name: '' })
-      loadUsers()
+      await loadUsers()
 
     } catch (error: any) {
-      alert(`❌ Fehler: ${error.message}`)
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
     } finally {
       setLoadingUserAction(false)
     }
   }
 
-  const deleteUser = async (userId: string) => {
-    if (!confirm('Möchtest du diesen Benutzer wirklich löschen?')) return
+  const deleteUser = async (userId: string, userEmail: string) => {
+    if (!confirm(`Benutzer "${userEmail}" wirklich löschen?`)) return
+
+    setLoadingUserAction(true)
 
     try {
-      const { error } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', userId)
+      const response = await fetch('/api/admin/delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      })
 
-      if (error) throw error
+      const result = await response.json()
 
-      alert('✅ Benutzer gelöscht!')
-      loadUsers()
+      if (!response.ok) {
+        throw new Error(result.error || 'Fehler beim Löschen')
+      }
+
+      setAuthMessage({ type: 'success', text: '✅ Benutzer gelöscht!' })
+      await loadUsers()
 
     } catch (error: any) {
-      alert(`❌ Fehler: ${error.message}`)
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    } finally {
+      setLoadingUserAction(false)
     }
   }
 
-  const sendPasswordReset = async (email: string) => {
+  const sendPasswordResetToUser = async (email: string) => {
+    setLoadingUserAction(true)
+
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`
       })
 
       if (error) throw error
-      alert(`✅ Passwort-Reset-Link wurde an ${email} gesendet!`)
+
+      setAuthMessage({ 
+        type: 'success', 
+        text: `✅ Passwort-Reset-Link an ${email} gesendet!` 
+      })
 
     } catch (error: any) {
-      alert(`❌ Fehler: ${error.message}`)
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    } finally {
+      setLoadingUserAction(false)
     }
   }
 
-  // ========== RENDER LOGIN PAGE ==========
-  
+  // ========== RENDER FUNCTIONS ==========
+
+  // Login Screen
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-green-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-6xl mb-4 animate-bounce">✈️</div>
-          <p className="text-gray-600">Lade...</p>
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-teal-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Lädt...</p>
         </div>
       </div>
     )
@@ -353,40 +428,42 @@ export default function TravelTrackerApp() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-green-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-          {/* Logo/Header */}
+          {/* Logo */}
           <div className="text-center mb-8">
-            <div className="text-6xl mb-4">✈️</div>
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-400 to-teal-500 rounded-2xl mb-4">
+              <span className="text-4xl">✈️</span>
+            </div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">TravelTracker Pro</h1>
             <p className="text-gray-600">
               {showPasswordReset ? 'Passwort zurücksetzen' : 'Melde dich an'}
             </p>
           </div>
 
-          {/* Message Display */}
+          {/* Alert Messages */}
           {authMessage && (
-            <div className={`mb-6 p-4 rounded-lg ${
+            <div className={`mb-6 p-4 rounded-lg border ${
               authMessage.type === 'success' 
-                ? 'bg-green-50 border border-green-200 text-green-800' 
-                : 'bg-red-50 border border-red-200 text-red-800'
+                ? 'bg-green-50 border-green-200 text-green-800' 
+                : 'bg-red-50 border-red-200 text-red-800'
             }`}>
               {authMessage.text}
             </div>
           )}
 
-          {/* Login or Password Reset Form */}
-          {!showPasswordReset ? (
+          {/* Login Form */}
+          {showLogin && !showPasswordReset && (
             <form onSubmit={handleLogin} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   E-Mail-Adresse
                 </label>
-                <input 
+                <input
                   type="email"
-                  required
-                  placeholder="deine@email.com"
                   value={credentials.email}
                   onChange={(e) => setCredentials({...credentials, email: e.target.value})}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  placeholder="deine@email.com"
+                  required
                 />
               </div>
 
@@ -394,17 +471,17 @@ export default function TravelTrackerApp() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Passwort
                 </label>
-                <input 
+                <input
                   type="password"
-                  required
-                  placeholder="••••••••"
                   value={credentials.password}
                   onChange={(e) => setCredentials({...credentials, password: e.target.value})}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  placeholder="••••••••"
+                  required
                 />
               </div>
 
-              <button 
+              <button
                 type="submit"
                 disabled={loadingUserAction}
                 className="w-full bg-teal-600 text-white py-3 rounded-lg hover:bg-teal-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -412,29 +489,26 @@ export default function TravelTrackerApp() {
                 {loadingUserAction ? 'Wird angemeldet...' : 'Anmelden'}
               </button>
             </form>
-          ) : (
+          )}
+
+          {/* Password Reset Form */}
+          {showPasswordReset && (
             <form onSubmit={handlePasswordReset} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   E-Mail-Adresse
                 </label>
-                <input 
+                <input
                   type="email"
-                  required
-                  placeholder="deine@email.com"
                   value={credentials.email}
                   onChange={(e) => setCredentials({...credentials, email: e.target.value})}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  placeholder="deine@email.com"
+                  required
                 />
               </div>
 
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  Du erhältst einen Link per E-Mail, um dein Passwort zurückzusetzen.
-                </p>
-              </div>
-
-              <button 
+              <button
                 type="submit"
                 disabled={loadingUserAction}
                 className="w-full bg-teal-600 text-white py-3 rounded-lg hover:bg-teal-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
@@ -444,7 +518,7 @@ export default function TravelTrackerApp() {
             </form>
           )}
 
-          {/* Toggle zwischen Login und Password Reset */}
+          {/* Toggle Password Reset */}
           <div className="mt-6 text-center">
             <button
               onClick={() => {
@@ -453,92 +527,77 @@ export default function TravelTrackerApp() {
               }}
               className="text-teal-600 hover:text-teal-700 text-sm font-medium"
             >
-              {showPasswordReset ? '← Zurück zum Login' : '🔑 Passwort vergessen?'}
+              {showPasswordReset ? '🔐 Zurück zum Login' : '🔑 Passwort vergessen?'}
             </button>
           </div>
 
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <p className="text-xs text-gray-500 text-center">
-              Noch kein Account? Kontaktiere deinen Admin.
-            </p>
+          {/* Admin Contact */}
+          <div className="mt-8 pt-6 border-t border-gray-200 text-center text-sm text-gray-600">
+            Noch kein Account? Kontaktiere deinen Admin.
           </div>
         </div>
       </div>
     )
   }
 
-  // ========== RENDER ADMIN USER MANAGEMENT ==========
-  
+  // ========== ADMIN TAB ==========
   const renderAdminUserManagement = () => {
-    if (currentUser?.role !== 'admin') {
-      return (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-          <p className="text-yellow-800">⚠️ Nur Admins können Benutzer verwalten.</p>
-        </div>
-      )
-    }
+    if (currentUser?.role !== 'admin') return null
 
     return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">👥 Benutzerverwaltung</h2>
-            <p className="text-gray-600 mt-1">Verwalte deine Freunde und deren Zugänge</p>
-          </div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-xl font-bold">👥 Benutzerverwaltung</h3>
           <button
             onClick={() => setShowAddUserModal(true)}
-            className="bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-2"
+            className="bg-teal-600 text-white px-4 py-2 rounded-lg hover:bg-teal-700 transition-colors"
           >
-            <span>➕</span>
-            <span>Neuen Benutzer hinzufügen</span>
+            ➕ Benutzer hinzufügen
           </button>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Name</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">E-Mail</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Rolle</th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Erstellt</th>
-                <th className="px-6 py-3 text-right text-sm font-semibold text-gray-900">Aktionen</th>
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Name</th>
+                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">E-Mail</th>
+                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Rolle</th>
+                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Erstellt</th>
+                <th className="text-left py-3 px-4 text-sm font-semibold text-gray-700">Aktionen</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200">
+            <tbody>
               {users.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center">
-                        <span className="text-lg">{user.name.charAt(0).toUpperCase()}</span>
-                      </div>
-                      <span className="font-medium text-gray-900">{user.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">{user.email}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      user.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700'
+                <tr key={user.id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <td className="py-3 px-4">{user.name}</td>
+                  <td className="py-3 px-4 text-sm text-gray-600">{user.email}</td>
+                  <td className="py-3 px-4">
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      user.role === 'admin' 
+                        ? 'bg-purple-100 text-purple-700' 
+                        : 'bg-blue-100 text-blue-700'
                     }`}>
-                      {user.role || 'member'}
+                      {user.role}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-gray-600">
+                  <td className="py-3 px-4 text-sm text-gray-600">
                     {new Date(user.created_at).toLocaleDateString('de-DE')}
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex justify-end gap-2">
+                  <td className="py-3 px-4">
+                    <div className="flex gap-2">
                       <button
-                        onClick={() => sendPasswordReset(user.email)}
-                        className="px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors"
+                        onClick={() => sendPasswordResetToUser(user.email)}
+                        className="text-teal-600 hover:text-teal-700 text-sm"
+                        disabled={loadingUserAction}
                       >
-                        🔑 PW zurücksetzen
+                        🔑 PW Reset
                       </button>
-                      {user.id !== currentUser.id && (
+                      {user.id !== currentUser?.id && (
                         <button
-                          onClick={() => deleteUser(user.id)}
-                          className="px-3 py-1.5 text-sm bg-red-50 text-red-700 rounded hover:bg-red-100 transition-colors"
+                          onClick={() => deleteUser(user.id, user.email)}
+                          className="text-red-600 hover:text-red-700 text-sm"
+                          disabled={loadingUserAction}
                         >
                           🗑️ Löschen
                         </button>
@@ -549,40 +608,33 @@ export default function TravelTrackerApp() {
               ))}
             </tbody>
           </table>
-
-          {users.length === 0 && (
-            <div className="text-center py-12 text-gray-500">
-              Noch keine Benutzer vorhanden. Erstelle den ersten Benutzer!
-            </div>
-          )}
-        </div>
-
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="font-semibold text-blue-900 mb-2">ℹ️ Hinweise zur Benutzerverwaltung</h3>
-          <ul className="space-y-2 text-sm text-blue-800">
-            <li>• <strong>Neuer Benutzer:</strong> Erstelle einen Account mit E-Mail und Passwort</li>
-            <li>• <strong>Login:</strong> Deine Freunde können sich mit ihrer E-Mail und dem Passwort einloggen</li>
-            <li>• <strong>Passwort zurücksetzen:</strong> Sendet einen Reset-Link an die E-Mail-Adresse</li>
-            <li>• <strong>Mindestanforderung:</strong> Passwort muss mindestens 6 Zeichen lang sein</li>
-          </ul>
         </div>
       </div>
     )
   }
 
-  // ========== RENDER ADMIN TAB ==========
-  
   const renderAdmin = () => {
+    if (currentUser?.role !== 'admin') {
+      return (
+        <div className="bg-white rounded-xl p-6 text-center">
+          <div className="text-6xl mb-4">🔒</div>
+          <h3 className="text-xl font-bold mb-2">Zugriff verweigert</h3>
+          <p className="text-gray-600">Nur Admins können diese Seite sehen.</p>
+        </div>
+      )
+    }
+
     return (
-      <div className="space-y-8">
+      <div className="space-y-6">
+        {/* User Info */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-2xl font-bold mb-4">⚙️ Admin-Bereich</h2>
-          <p className="text-gray-600 mb-4">
-            Verwaltung und Einstellungen für TravelTracker Pro
-          </p>
-          <div className="flex items-center gap-3 text-sm">
-            <span className="px-3 py-1 bg-teal-100 text-teal-700 rounded-full">
-              Eingeloggt als: {currentUser?.name}
+          <h3 className="text-xl font-bold mb-4">👤 Dein Account</h3>
+          <div className="flex flex-wrap gap-3">
+            <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full">
+              {currentUser?.email}
+            </span>
+            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full">
+              {currentUser?.name}
             </span>
             <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full">
               Rolle: {currentUser?.role || 'member'}
@@ -793,6 +845,27 @@ export default function TravelTrackerApp() {
           </div>
         </div>
       </nav>
+
+      {/* Alert Messages - Sticky */}
+      {authMessage && (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className={`p-4 rounded-lg border ${
+            authMessage.type === 'success' 
+              ? 'bg-green-50 border-green-200 text-green-800' 
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}>
+            <div className="flex items-center justify-between">
+              <span>{authMessage.text}</span>
+              <button 
+                onClick={() => setAuthMessage(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
