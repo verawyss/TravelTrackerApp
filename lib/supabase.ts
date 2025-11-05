@@ -8,7 +8,25 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// ✅ Standard Client für normale Operationen (mit RLS)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  }
+})
+
+// ✅ Service Role Client für Admin-Operationen (OHNE RLS) - NUR für Server-Side!
+export const supabaseAdmin = createClient(
+  supabaseUrl,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+)
 
 // =====================================================
 // ERWEITERTE TYPESCRIPT TYPES
@@ -512,6 +530,7 @@ function deg2rad(deg: number): number {
 
 export default {
   supabase,
+  supabaseAdmin,
   signUp,
   signIn,
   signOut,
