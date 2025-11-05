@@ -1,0 +1,363 @@
+# 🎯 PROJEKT-BRIEFING: TravelTracker Pro
+
+> **Kopiere diesen Text in jeden neuen Chat mit Claude, damit er sofort weiß, woran wir arbeiten!**
+
+---
+
+## 📱 PROJEKT-ÜBERSICHT
+
+**Projektname:** TravelTracker Pro
+**Typ:** Next.js Web-Anwendung mit Supabase Backend
+**Zweck:** Reiseplanungs- und Ausgabenverwaltungs-App für Gruppen
+
+---
+
+## 🛠️ TECH STACK
+
+- **Framework:** Next.js 14+ (App Router)
+- **Sprache:** TypeScript
+- **Styling:** Tailwind CSS
+- **Datenbank:** Supabase (PostgreSQL)
+- **Authentifizierung:** Supabase Auth (Email/Passwort)
+- **Deployment:** [Vercel/Netlify/etc. - deine Plattform hier eintragen]
+
+---
+
+## 📂 PROJEKTSTRUKTUR
+
+```
+traveltracker-pro/
+├── app/
+│   ├── page.tsx                          # Hauptseite mit Auth & Dashboard
+│   ├── reset-password/
+│   │   └── page.tsx                      # Passwort-Reset-Seite
+│   └── api/
+│       └── admin/
+│           └── create-user/
+│               └── route.ts              # API für Admin-User-Erstellung
+├── lib/
+│   └── supabase.ts                       # Supabase Client
+├── .env.local                            # Environment Variables (NICHT auf GitHub!)
+├── .gitignore
+├── package.json
+└── README.md
+```
+
+---
+
+## 🗄️ DATENBANK-SCHEMA (Supabase)
+
+### Tabellen:
+
+#### 1. **users**
+```sql
+- id: UUID (Primary Key, Foreign Key zu auth.users)
+- email: TEXT (UNIQUE)
+- name: TEXT
+- created_at: TIMESTAMP
+- last_sign_in_at: TIMESTAMP
+- avatar_url: TEXT (optional)
+- role: TEXT (Werte: 'admin', 'member')
+```
+
+#### 2. **trips**
+```sql
+- id: UUID (Primary Key)
+- name: TEXT
+- destination: TEXT
+- flag: TEXT (Emoji)
+- start_date: DATE
+- end_date: DATE
+- budget: NUMERIC
+- currency: TEXT
+- status: TEXT
+- created_by: UUID (Foreign Key zu users)
+- created_at: TIMESTAMP
+```
+
+#### 3. **trip_members**
+```sql
+- id: UUID (Primary Key)
+- trip_id: UUID (Foreign Key zu trips)
+- user_id: UUID (Foreign Key zu users)
+- role: TEXT (Werte: 'owner', 'admin', 'member')
+- joined_at: TIMESTAMP
+- UNIQUE(trip_id, user_id)
+```
+
+#### 4. **expenses**
+```sql
+- id: UUID (Primary Key)
+- trip_id: UUID (Foreign Key zu trips)
+- user_id: UUID (Foreign Key zu users)
+- category: TEXT
+- description: TEXT
+- amount: NUMERIC
+- paid_by: TEXT
+- split_between: TEXT[] (Array)
+- date: DATE
+- created_at: TIMESTAMP
+```
+
+#### 5. **itinerary**
+```sql
+- id: UUID (Primary Key)
+- trip_id: UUID (Foreign Key zu trips)
+- day: INTEGER
+- time: TEXT
+- title: TEXT
+- details: TEXT
+- type: TEXT
+- created_at: TIMESTAMP
+```
+
+#### 6. **packing_list**
+```sql
+- id: UUID (Primary Key)
+- trip_id: UUID (Foreign Key zu trips)
+- category: TEXT
+- item: TEXT
+- packed: BOOLEAN
+- created_at: TIMESTAMP
+```
+
+#### 7. **locations**
+```sql
+- id: UUID (Primary Key)
+- trip_id: UUID (Foreign Key zu trips)
+- name: TEXT
+- address: TEXT
+- type: TEXT (Werte: 'hotel', 'restaurant', 'activity', 'transport', 'other')
+- notes: TEXT
+- created_at: TIMESTAMP
+```
+
+---
+
+## 🔐 AUTHENTIFIZIERUNG
+
+**System:** Supabase Auth mit Email/Passwort
+
+**Features:**
+- ✅ Login mit Email/Passwort
+- ✅ Passwort zurücksetzen per Email
+- ✅ Admin kann neue User erstellen
+- ✅ Row Level Security (RLS) aktiviert
+- ✅ Automatischer Schutz durch Middleware
+
+**Rollen:**
+- `admin`: Kann Benutzer verwalten, alle Features nutzen
+- `member`: Kann nur eigene Daten sehen/bearbeiten
+
+---
+
+## 🎨 DESIGN & UI
+
+**Farben:**
+- Primary: Teal (teal-600, teal-700)
+- Background: Gradient (blue-50 → teal-50 → green-50)
+- Success: Green
+- Error: Red
+- Warning: Yellow
+
+**Navigation:**
+- Sticky Header mit Logo und Trip-Info
+- Tab-Navigation: Übersicht, Reisen, Ausgaben, Plan, Packliste, Karte, Team, Abrechnung, Admin
+
+**Komponenten:**
+- Modals für Formulare
+- Cards für Daten-Anzeige
+- Tables für Listen
+- Toast-Notifications (Alerts)
+
+---
+
+## 📋 HAUPT-FEATURES
+
+### ✅ Implementiert:
+
+1. **Authentifizierung**
+   - Login/Logout
+   - Passwort zurücksetzen
+   - Admin-User-Management
+   
+2. **Multi-User Support**
+   - User können mehreren Trips beitreten
+   - Rollen-basierte Berechtigungen
+   
+3. **Admin-Panel**
+   - Benutzer erstellen/löschen
+   - Passwort-Reset-Links versenden
+   - System-Übersicht
+
+### 🚧 In Arbeit / Geplant:
+
+4. **Reiseverwaltung**
+   - Trips erstellen/bearbeiten/löschen
+   - Trip-Mitglieder einladen
+   - Trip-Status verwalten
+
+5. **Ausgabenverwaltung**
+   - Ausgaben erfassen
+   - Kategorisierung
+   - Split-Berechnungen
+   - Abrechnungs-System
+
+6. **Reiseplanung**
+   - Tagesplan (Itinerary)
+   - Packliste
+   - Locations/Orte speichern
+
+7. **Karten-Integration**
+   - Locations auf Karte anzeigen
+   - Route planen
+
+---
+
+## 🔧 ENVIRONMENT VARIABLES
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=xxx
+SUPABASE_SERVICE_ROLE_KEY=xxx  # NUR für Server-Side API Routes!
+```
+
+---
+
+## 📝 WICHTIGE HINWEISE FÜR NEUE CHATS
+
+### Wenn du Hilfe bei diesem Projekt brauchst, teile Claude:
+
+1. **Was du tun möchtest:**
+   - Welches Feature willst du implementieren/ändern?
+   - Welches Problem hast du?
+
+2. **Betroffene Dateien:**
+   - Welche Datei(en) sind relevant?
+   - Lade die Datei hoch, wenn möglich
+
+3. **Kontext:**
+   - Welchen Tab/Bereich der App betrifft es?
+   - Für welche User-Rolle? (Admin/Member)
+
+4. **Technische Details:**
+   - Gibt es Fehlermeldungen? (Kopiere sie!)
+   - Was hast du bereits versucht?
+
+### Beispiel für einen guten neuen Chat-Start:
+
+```
+Ich arbeite an TravelTracker Pro (siehe PROJECT-BRIEFING.md).
+
+Ich möchte: [Feature X implementieren / Problem Y lösen]
+
+Betroffene Datei: app/page.tsx
+
+Aktueller Stand: [Beschreibung]
+
+Fehler (falls vorhanden): [Fehlermeldung]
+```
+
+---
+
+## 🎯 ENTWICKLUNGS-RICHTLINIEN
+
+### Code-Stil:
+- TypeScript verwenden
+- Funktionale Komponenten mit Hooks
+- Klare, beschreibende Variablennamen
+- Kommentare auf Deutsch
+- Emojis in UI-Texten 👍
+
+### Supabase:
+- Immer Row Level Security (RLS) beachten
+- Policies für alle Tabellen definieren
+- `auth.uid()` für User-Zugriff nutzen
+
+### Sicherheit:
+- Keine Secrets im Code
+- Service Role Key nur Server-Side
+- Input-Validierung auf Client & Server
+- XSS-Schutz durch React
+
+### UI/UX:
+- Mobile-First Design
+- Loading States zeigen
+- Fehler benutzerfreundlich anzeigen
+- Erfolgs-Feedback geben
+
+---
+
+## 📚 NÜTZLICHE BEFEHLE
+
+```bash
+# Development starten
+npm run dev
+
+# Dependencies installieren
+npm install
+
+# Build für Produktion
+npm run build
+
+# TypeScript prüfen
+npx tsc --noEmit
+
+# Supabase SQL Editor öffnen
+# → Dashboard → SQL Editor
+```
+
+---
+
+## 🐛 BEKANNTE PROBLEME & LÖSUNGEN
+
+### Problem: "Cannot find module '@/lib/supabase'"
+**Lösung:** Prüfe ob `lib/supabase.ts` existiert und korrekt exportiert
+
+### Problem: "Policy violation" in Supabase
+**Lösung:** RLS Policies prüfen, SQL Script nochmal ausführen
+
+### Problem: API Route gibt 404
+**Lösung:** Server neu starten, Dateipfad prüfen
+
+### Problem: Login funktioniert nicht
+**Lösung:** Prüfe ob User in `users` Tabelle existiert mit korrekter Rolle
+
+---
+
+## 📞 NÄCHSTE SCHRITTE
+
+**Wenn du in einem neuen Chat weitermachen möchtest:**
+
+1. Kopiere dieses ganze Briefing in den Chat
+2. Erkläre, was du tun möchtest
+3. Lade relevante Dateien hoch (z.B. `page.tsx`)
+4. Claude weiß dann sofort Bescheid! 🎉
+
+---
+
+## ✅ CHECKLISTE FÜR NEUE CHAT-SESSION
+
+- [ ] PROJECT-BRIEFING.md kopiert
+- [ ] Erklärt was ich tun möchte
+- [ ] Relevante Dateien hochgeladen
+- [ ] Fehlermeldungen (falls vorhanden) kopiert
+- [ ] Aktuellen Stand beschrieben
+
+---
+
+**Letzte Aktualisierung:** November 2025
+**Version:** 2.0 (mit Auth-System)
+
+---
+
+## 💡 TIPPS
+
+- **Speichere dieses Dokument als `PROJECT-BRIEFING.md` in deinem Projekt**
+- **Committe es auf GitHub** (kein Secret drin!)
+- **Verwende es für jeden neuen Chat**
+- **Aktualisiere es, wenn sich etwas ändert**
+
+---
+
+**Viel Erfolg mit deinem Projekt! 🚀**
