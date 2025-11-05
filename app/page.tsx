@@ -710,7 +710,7 @@ export default function TravelTracker() {
   }
 
   const renderItinerary = () => {
-    const days = [...new Set(itineraryItems.map(item => item.day))].sort((a, b) => a - b)
+    const days = Array.from(new Set(itineraryItems.map(item => item.day))).sort((a, b) => a - b)
 
     return (
       <div className="space-y-6">
@@ -751,7 +751,7 @@ export default function TravelTracker() {
   }
 
   const renderPacking = () => {
-    const categories = [...new Set(packingLists.map(item => item.category))]
+    const categories = Array.from(new Set(packingLists.map(item => item.category)))
 
     return (
       <div className="space-y-6">
