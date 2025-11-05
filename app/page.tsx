@@ -127,9 +127,14 @@ export default function TravelTrackerApp() {
     }
   }, [])
 
-  // ✅ NEU: Separate Funktion zum Laden der User-Daten
-  const loadUserData = async (userId: string) => {
+  // ✅ NEU: Separate Funktion zum Laden der User-Daten mit Retry-Logik
+  const loadUserData = async (userId: string, retryCount = 0) => {
     try {
+      // Kurze Wartezeit damit der Auth-Kontext sich setzen kann
+      if (retryCount === 0) {
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+
       const { data: userData, error } = await supabase
         .from('users')
         .select('*')
@@ -137,18 +142,27 @@ export default function TravelTrackerApp() {
         .single()
       
       if (error) {
-        console.error('Error loading user data:', error)
+        console.error('Error loading user data (attempt ' + (retryCount + 1) + '):', error)
+        
+        // Retry bis zu 3x wenn es ein Policy-Fehler ist
+        if (retryCount < 3 && error.message.includes('policy')) {
+          console.log('Retrying in 500ms...')
+          await new Promise(resolve => setTimeout(resolve, 500))
+          return loadUserData(userId, retryCount + 1)
+        }
+        
         throw error
       }
 
       if (userData) {
+        console.log('✅ User data loaded successfully:', userData.email)
         setCurrentUser(userData)
         setIsAuthenticated(true)
         // Lade Trips und andere Daten
         await loadInitialData(userData)
       }
     } catch (error) {
-      console.error('Failed to load user data:', error)
+      console.error('Failed to load user data after retries:', error)
       setAuthMessage({ 
         type: 'error', 
         text: '❌ Fehler beim Laden der Benutzerdaten. Bitte melde dich erneut an.' 
