@@ -1,1618 +1,341 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase, Trip, Expense, ItineraryItem, PackingItem } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
-export default function TravelTrackerPro() {
-  // State Management
+export default function TravelTracker() {
+  // ========== ORIGINAL STATES ==========
   const [activeTab, setActiveTab] = useState('overview')
-  const [currentTrip, setCurrentTrip] = useState<Trip | null>(null)
-  const [expenses, setExpenses] = useState<Expense[]>([])
-  const [itineraryItems, setItineraryItems] = useState<ItineraryItem[]>([])
-  const [packingItems, setPackingItems] = useState<PackingItem[]>([])
-  const [selectedDay, setSelectedDay] = useState(1)
-  const [loading, setLoading] = useState(true)
+  const [expenses, setExpenses] = useState<any[]>([])
+  const [itineraryItems, setItineraryItems] = useState<any[]>([])
+  const [packingLists, setPackingLists] = useState<any[]>([])
+  const [currentTrip, setCurrentTrip] = useState<any>(null)
+  const [settlements, setSettlements] = useState<any[]>([])
   
-// Neue Modal States
-const [showAddExpenseModal, setShowAddExpenseModal] = useState(false)
-const [showAddActivityModal, setShowAddActivityModal] = useState(false)
+  // Demo User
+  const currentUser = {
+    id: 'demo-user-1',
+    email: 'max@example.com',
+    name: 'Max Mustermann',
+    role: 'admin'
+  }
 
-// Neue Form States
-const [newExpense, setNewExpense] = useState({
-  category: 'Sonstiges',
-  description: '',
-  amount: 0,
-  paid_by: 'Max',
-  split_between: ['Max', 'Anna', 'Tom']
-})
-  
-const [newActivity, setNewActivity] = useState({
-  day: 1,
-  time: '10:00',
-  title: '',
-  details: '',
-  type: 'Aktivität'
-})
-  // V2 Features - Neue States
+  // ========== V2 FEATURES - NEUE STATES ==========
   const [allUserTrips, setAllUserTrips] = useState<any[]>([])
   const [tripMembers, setTripMembers] = useState<any[]>([])
   const [invitations, setInvitations] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
-  const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('member')
+  const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('owner')
+
+  // Modal States
   const [showNewTripModal, setShowNewTripModal] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [showAddLocationModal, setShowAddLocationModal] = useState(false)
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false)
+  const [showAddActivityModal, setShowAddActivityModal] = useState(false)
+
+  // Form States
   const [newTripData, setNewTripData] = useState({
-    name: '', destination: '', flag: '🌍', start_date: '', end_date: '', budget: 0, currency: 'EUR'
+    name: '',
+    destination: '',
+    flag: '🌍',
+    start_date: '',
+    end_date: '',
+    budget: 0,
+    currency: 'EUR'
   })
+
   const [inviteEmail, setInviteEmail] = useState('')
-  const [newLocation, setNewLocation] = useState({
-    name: '', address: '', type: 'activity' as const, notes: ''
-  })
 
-  
-  // Packing Templates
-  const packingTemplates = {
-    summer: {
-      name: 'Sommer',
-      icon: '☀️',
-      categories: {
-        '👕 Kleidung': [
-          { item: 'T-Shirts (5-7)', essential: true },
-          { item: 'Shorts (2-3)', essential: true },
-          { item: 'Badehose/Badeanzug', essential: true },
-          { item: 'Leichte Hose', essential: false },
-          { item: 'Leichte Jacke', essential: true },
-          { item: 'Unterwäsche (7+)', essential: true },
-          { item: 'Socken (7+)', essential: true },
-          { item: 'Schlafanzug', essential: false },
-          { item: 'Bequeme Schuhe', essential: true },
-          { item: 'Sandalen/Flip-Flops', essential: true }
-        ],
-        '🧴 Hygiene': [
-          { item: 'Zahnbürste & Zahnpasta', essential: true },
-          { item: 'Sonnencreme LSF 30+', essential: true },
-          { item: 'Shampoo & Duschgel', essential: true },
-          { item: 'Deo', essential: true },
-          { item: 'After-Sun Lotion', essential: false },
-          { item: 'Mückenschutz', essential: false },
-          { item: 'Erste-Hilfe-Set', essential: true },
-          { item: 'Medikamente', essential: true }
-        ],
-        '🔌 Elektronik': [
-          { item: 'Smartphone', essential: true },
-          { item: 'Ladekabel', essential: true },
-          { item: 'Powerbank', essential: false },
-          { item: 'Kopfhörer', essential: false },
-          { item: 'Kamera', essential: false },
-          { item: 'Reiseadapter', essential: true }
-        ],
-        '📄 Dokumente': [
-          { item: 'Reisepass/Ausweis', essential: true },
-          { item: 'Flugtickets', essential: true },
-          { item: 'Hotelbuchung', essential: true },
-          { item: 'Reiseversicherung', essential: true },
-          { item: 'Kreditkarten', essential: true },
-          { item: 'Bargeld', essential: true }
-        ],
-        '🏖️ Strand': [
-          { item: 'Strandtuch', essential: true },
-          { item: 'Sonnenbrille', essential: true },
-          { item: 'Sonnenhut/Cap', essential: true },
-          { item: 'Wasserflasche', essential: false },
-          { item: 'Buch/E-Reader', essential: false },
-          { item: 'Schnorchelset', essential: false },
-          { item: 'Strandtasche', essential: false }
-        ]
-      }
-    },
-    spring: {
-      name: 'Frühling',
-      icon: '🌸',
-      categories: {
-        '👕 Kleidung': [
-          { item: 'Langarmshirts (3-4)', essential: true },
-          { item: 'T-Shirts (3-4)', essential: true },
-          { item: 'Jeans/Hosen (2)', essential: true },
-          { item: 'Leichte Jacke', essential: true },
-          { item: 'Regenjacke', essential: true },
-          { item: 'Pullover', essential: false },
-          { item: 'Unterwäsche (7+)', essential: true },
-          { item: 'Socken (7+)', essential: true },
-          { item: 'Schuhe (2 Paar)', essential: true }
-        ],
-        '🧴 Hygiene': [
-          { item: 'Zahnbürste & Zahnpasta', essential: true },
-          { item: 'Shampoo & Duschgel', essential: true },
-          { item: 'Deo', essential: true },
-          { item: 'Sonnencreme', essential: false },
-          { item: 'Lippenbalsam', essential: false },
-          { item: 'Erste-Hilfe-Set', essential: true }
-        ]
-      }
-    },
-    autumn: {
-      name: 'Herbst',
-      icon: '🍂',
-      categories: {
-        '👕 Kleidung': [
-          { item: 'Langarmshirts (4-5)', essential: true },
-          { item: 'Pullover (2-3)', essential: true },
-          { item: 'Jeans/Hosen (2-3)', essential: true },
-          { item: 'Warme Jacke', essential: true },
-          { item: 'Regenjacke', essential: true },
-          { item: 'Schal', essential: false },
-          { item: 'Unterwäsche (7+)', essential: true },
-          { item: 'Socken (7+)', essential: true },
-          { item: 'Feste Schuhe', essential: true }
-        ],
-        '🧴 Hygiene': [
-          { item: 'Zahnbürste & Zahnpasta', essential: true },
-          { item: 'Shampoo & Duschgel', essential: true },
-          { item: 'Deo', essential: true },
-          { item: 'Handcreme', essential: false },
-          { item: 'Lippenbalsam', essential: false },
-          { item: 'Erste-Hilfe-Set', essential: true }
-        ]
-      }
-    },
-    winter: {
-      name: 'Winter',
-      icon: '❄️',
-      categories: {
-        '👕 Kleidung': [
-          { item: 'Winterjacke', essential: true },
-          { item: 'Pullover (3-4)', essential: true },
-          { item: 'Thermounterwäsche', essential: true },
-          { item: 'Jeans/Hosen (2-3)', essential: true },
-          { item: 'Mütze', essential: true },
-          { item: 'Schal', essential: true },
-          { item: 'Handschuhe', essential: true },
-          { item: 'Warme Socken (7+)', essential: true },
-          { item: 'Winterstiefel', essential: true }
-        ],
-        '🧴 Hygiene': [
-          { item: 'Zahnbürste & Zahnpasta', essential: true },
-          { item: 'Shampoo & Duschgel', essential: true },
-          { item: 'Deo', essential: true },
-          { item: 'Handcreme', essential: true },
-          { item: 'Lippenbalsam', essential: true },
-          { item: 'Erste-Hilfe-Set', essential: true }
-        ]
-      }
-    }
-  }
-
-  // Determine season from date
-  const getSeason = (dateString: string): keyof typeof packingTemplates => {
-    const month = new Date(dateString).getMonth() + 1
-    if (month >= 3 && month <= 5) return 'spring'
-    if (month >= 6 && month <= 8) return 'summer'
-    if (month >= 9 && month <= 11) return 'autumn'
-    return 'winter'
-  }
-
-  // Load Data
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
-    try {
-      // Load active trip
-      const { data: trips } = await supabase
-        .from('trips')
-        .select('*')
-        .eq('status', 'active')
-        .order('created_at', { ascending: false })
-        .limit(1)
-
-      if (trips && trips.length > 0) {
-        setCurrentTrip(trips[0])
-        
-        // Load expenses
-        const { data: expensesData } = await supabase
-          .from('expenses')
-          .select('*')
-          .eq('trip_id', trips[0].id)
-          .order('created_at', { ascending: false })
-        
-        if (expensesData) setExpenses(expensesData)
-
-        // Load itinerary
-        const { data: itineraryData } = await supabase
-          .from('itinerary')
-          .select('*')
-          .eq('trip_id', trips[0].id)
-          .order('day', { ascending: true })
-          .order('time', { ascending: true })
-        
-        if (itineraryData) setItineraryItems(itineraryData)
-
-        // Load or initialize packing list
-        const { data: packingData } = await supabase
-          .from('packing_items')
-          .select('*')
-          .eq('trip_id', trips[0].id)
-        
-        if (packingData && packingData.length > 0) {
-          setPackingItems(packingData)
-        } else {
-          // Initialize packing list based on season
-          await initializePackingList(trips[0])
-        }
-      }
-    } catch (error) {
-      console.error('Error loading data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const initializePackingList = async (trip: Trip) => {
-    const season = getSeason(trip.start_date)
-    const template = packingTemplates[season]
-    const items: Omit<PackingItem, 'id' | 'created_at'>[] = []
-
-    Object.entries(template.categories).forEach(([category, categoryItems]) => {
-      categoryItems.forEach(({ item, essential }) => {
-        items.push({
-          trip_id: trip.id,
-          category,
-          item,
-          packed: false,
-          essential
-        })
-      })
-    })
-
-    const { data } = await supabase
-      .from('packing_items')
-      .insert(items)
-      .select()
-
-    if (data) setPackingItems(data)
-  }
-
-  // Toggle packing item
-  const togglePackingItem = async (itemId: string) => {
-    const item = packingItems.find(i => i.id === itemId)
-    if (!item) return
-
-    const { data } = await supabase
-      .from('packing_items')
-      .update({ packed: !item.packed })
-      .eq('id', itemId)
-      .select()
-
-    if (data) {
-      setPackingItems(packingItems.map(i => 
-        i.id === itemId ? data[0] : i
-      ))
-    }
-  }
-
-  // Calculate packing progress
-  const calculatePackingProgress = () => {
-    if (packingItems.length === 0) return 0
-    const packed = packingItems.filter(i => i.packed).length
-    return Math.round((packed / packingItems.length) * 100)
-  }
-
-  // Calculate total expenses
-  const calculateTotalExpenses = () => {
-    return expenses.reduce((sum, expense) => sum + expense.amount, 0)
-  }
-
-  // Calculate expenses per person
-  const calculateExpensesPerPerson = () => {
-    const total = calculateTotalExpenses()
-    // In real app, get number of travelers from users table
-    const travelers = 3
-    return total / travelers
-  }
-
-  // Calculate days until trip
-  const calculateDaysUntilTrip = () => {
-    if (!currentTrip) return 0
-    const today = new Date()
-    const startDate = new Date(currentTrip.start_date)
-    const diffTime = startDate.getTime() - today.getTime()
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    return diffDays
-  }
-
-  // Calculate trip duration
-  const calculateTripDuration = () => {
-    if (!currentTrip) return 0
-    const start = new Date(currentTrip.start_date)
-    const end = new Date(currentTrip.end_date)
-    const diffTime = end.getTime() - start.getTime()
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
-    return diffDays
-  }
-
-  // Get expense icon
-  const getExpenseIcon = (category: string) => {
-    // Neue Reise erstellen
-const createNewTrip = async () => {
-  if (!newTripData.name || !newTripData.destination) {
-    alert('❌ Bitte Name und Ziel eingeben!')
-    return
-  }
-
-  try {
-    const { data: tripData, error: tripError } = await supabase
-      .from('trips')
-      .insert({
-        ...newTripData,
-        status: 'active',
-        created_by: currentUser.id
-      })
-      .select()
-      .single()
-
-    if (tripError) throw tripError
-
-    await supabase.from('trip_members').insert({
-      trip_id: tripData.id,
-      user_id: currentUser.id,
-      role: 'owner'
-    })
-
-    setShowNewTripModal(false)
-    setCurrentTrip(tripData)
-    await loadData()
-    alert('✅ Reise erstellt!')
-  } catch (error) {
-    alert('❌ Fehler: ' + (error as Error).message)
-  }
-}
-
-// Ausgabe hinzufügen
-const createExpense = async () => {
-  if (!currentTrip || !newExpense.description || newExpense.amount <= 0) {
-    alert('❌ Bitte alle Felder ausfüllen!')
-    return
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('expenses')
-      .insert({
-        trip_id: currentTrip.id,
-        ...newExpense
-      })
-      .select()
-      .single()
-
-    if (error) throw error
-
-    setExpenses([...expenses, data])
-    setShowAddExpenseModal(false)
-    setNewExpense({
-      category: 'Sonstiges',
-      description: '',
-      amount: 0,
-      paid_by: 'Max',
-      split_between: ['Max', 'Anna', 'Tom']
-    })
-    alert('✅ Ausgabe hinzugefügt!')
-  } catch (error) {
-    alert('❌ Fehler: ' + (error as Error).message)
-  }
-}
-
-// Aktivität hinzufügen
-const createActivity = async () => {
-  if (!currentTrip || !newActivity.title) {
-    alert('❌ Bitte Titel eingeben!')
-    return
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('itinerary')
-      .insert({
-        trip_id: currentTrip.id,
-        ...newActivity
-      })
-      .select()
-      .single()
-
-    if (error) throw error
-
-    setItineraryItems([...itineraryItems, data])
-    setShowAddActivityModal(false)
-    setNewActivity({
-      day: 1,
-      time: '10:00',
-      title: '',
-      details: '',
-      type: 'Aktivität'
-    })
-    alert('✅ Aktivität hinzugefügt!')
-  } catch (error) {
-    alert('❌ Fehler: ' + (error as Error).message)
-  }
-}
-
-// Einladung senden
-const sendInvitation = async () => {
-  if (!currentTrip || !inviteEmail.includes('@')) {
-    alert('❌ Bitte gültige E-Mail eingeben!')
-    return
-  }
-
-  try {
-    const token = Math.random().toString(36).substring(2, 15)
-    
-    await supabase.from('invitations').insert({
-      trip_id: currentTrip.id,
-      invited_by: currentUser.id,
-      invited_email: inviteEmail,
-      token,
-      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      status: 'pending'
-    })
-
-    const link = `${window.location.origin}/invite/${token}`
-    await navigator.clipboard.writeText(link)
-    
-    alert(`✅ Einladung erstellt!\n\n📋 Link kopiert:\n${link}`)
-    setShowInviteModal(false)
-    setInviteEmail('')
-  } catch (error) {
-    alert('❌ Fehler: ' + (error as Error).message)
-  }
-}
-
-// Ort hinzufügen
-const addLocation = async () => {
-  if (!currentTrip || !newLocation.name || !newLocation.address) {
-    alert('❌ Bitte Name und Adresse eingeben!')
-    return
-  }
-
-  try {
-    const coords = await geocodeAddress(newLocation.address)
-    if (!coords) {
-      alert('❌ Adresse nicht gefunden!')
-      return
-    }
-
-    const { data, error } = await supabase
-      .from('locations')
-      .insert({
-        trip_id: currentTrip.id,
-        name: newLocation.name,
-        address: newLocation.address,
-        latitude: coords.lat,
-        longitude: coords.lng,
-        type: newLocation.type,
-        notes: newLocation.notes
-      })
-      .select()
-      .single()
-
-    if (error) throw error
-
-    setLocations([...locations, data])
-    setShowAddLocationModal(false)
-    setNewLocation({ name: '', address: '', type: 'activity', notes: '' })
-    alert('✅ Ort hinzugefügt!')
-  } catch (error) {
-    alert('❌ Fehler: ' + (error as Error).message)
-  }
-}
-
-// Geocoding Helper
-async function geocodeAddress(address: string) {
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`
-    )
-    const data = await res.json()
-    return data[0] ? { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) } : null
-  } catch {
-    return null
-  }
-}
-
-// Zwischen Reisen wechseln
-const switchToTrip = async (trip: Trip) => {
-  setCurrentTrip(trip)
-  setActiveTab('overview')
-  await loadData()
-  alert(`✅ Gewechselt zu: ${trip.name}`)
-}
-
-// Alle User-Reisen laden
-const loadAllTrips = async () => {
-  try {
-    const { data } = await supabase
-      .from('trip_members')
-      .select('*, trip:trips(*), members:trip_members(*, user:users(*))')
-      .eq('user_id', currentUser.id)
-    
-    if (data) {
-      setAllUserTrips(data.map((item: any) => ({
-        ...item.trip,
-        members: item.members,
-        member_count: item.members?.length || 0,
-        user_role: item.role
-      })))
-    }
-  } catch (error) {
-    console.error('Error:', error)
-  }
-}
-  
-    const icons: { [key: string]: string } = {
-      'Transport': '✈️',
-      'Unterkunft': '🏨',
-      'Essen': '🍽️',
-      'Aktivität': '🎫',
-      'Shopping': '🛍️',
-      'Sonstiges': '💰'
-    }
-    return icons[category] || '💰'
-  }
-
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-white text-2xl">Lädt... 🌍</div>
-      </div>
-    )
-  }
-
-  if (!currentTrip) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl p-8 max-w-md text-center">
-          <div className="text-6xl mb-4">🌍</div>
-          <h1 className="text-2xl font-bold mb-4">Willkommen bei TravelTracker Pro!</h1>
-          <p className="text-gray-600 mb-6">
-            Du hast noch keine aktive Reise. Erstelle deine erste Reise, um loszulegen!
-          </p>
-          <button 
-            className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-6 py-3 rounded-full font-semibold hover:shadow-lg transition-all"
-            onClick={() => setShowAddExpenseModal(true)}
-          >
-            ➕ Neue Reise erstellen
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  // Render functions will be in part 2...
-  return (
-    <div className="min-h-screen p-4 md:p-8 flex items-center justify-center">
-      {/* Phone Container */}
-      <div className="bg-white rounded-[25px] shadow-2xl max-w-[400px] w-full overflow-hidden flex flex-col" style={{ height: '90vh', maxHeight: '800px' }}>
-        
-        {/* Header */}
-        <div className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white p-5 text-center flex-shrink-0">
-          <h1 className="text-2xl font-bold mb-1">🌍 TravelTracker Pro</h1>
-          <p className="text-sm opacity-90">Deine Reise-Management-App</p>
-          
-          <div className="bg-white/20 rounded-2xl p-3 mt-4">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{currentTrip.flag}</span>
-              <div className="flex-1 text-left">
-                <div className="font-semibold">{currentTrip.name}</div>
-                <div className="text-xs opacity-90">
-                  {new Date(currentTrip.start_date).toLocaleDateString('de-DE')} - {new Date(currentTrip.end_date).toLocaleDateString('de-DE')}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="flex bg-gray-50 border-b-2 border-gray-200 flex-shrink-0 overflow-x-auto">
-          {[
-            { id: 'overview', icon: '📊', label: 'Übersicht' },
-            { id: 'trips', icon: '🌍', label: 'Reisen' },      // NEU
-            { id: 'expenses', icon: '💰', label: 'Ausgaben' },
-            { id: 'itinerary', icon: '🗓️', label: 'Plan' },
-            { id: 'packing', icon: '🎒', label: 'Packliste' },
-            { id: 'map', icon: '🗺️', label: 'Karte' },         // NEU
-            { id: 'friends', icon: '👥', label: 'Team' },      // NEU
-            { id: 'settlement', icon: '💳', label: 'Abrechnung' },
-            { id: 'admin', icon: '👑', label: 'Admin' }
-          ].map(tab => (
-            <div
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 min-w-[80px] p-3 text-center text-xs font-semibold cursor-pointer transition-all ${
-                activeTab === tab.id 
-                  ? 'text-[#667eea] bg-white border-b-3 border-[#667eea]' 
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              <div className="text-xl mb-1">{tab.icon}</div>
-              {tab.label}
-            </div>
-          ))}
-        </div>
-
-        {/* Content Area - will continue in next part */}
-        <div className="flex-1 overflow-y-auto p-5">
-          {/* Content will be rendered here based on activeTab */}
-          {renderTabContent()}
-        </div>
-      </div>
-    </div>
-  )
-
-function renderTabContent() {
-  switch (activeTab) {
-    case 'overview': return renderOverview()
-    case 'trips': return renderTripsManagement()         // NEU
-    case 'expenses': return renderExpenses()
-    case 'itinerary': return renderItinerary()
-    case 'packing': return renderPacking()
-    case 'map': return renderMapView()                   // NEU
-    case 'friends': return renderFriendsAndInvitations() // NEU
-    case 'settlement': return renderSettlement()
-    case 'admin': return renderAdmin()
-    default: return null
-  }
-}
-
-function renderOverview() {
-  const daysUntil = calculateDaysUntilTrip()
-  const duration = calculateTripDuration()
-  const total = calculateTotalExpenses()
-  const perPerson = calculateExpensesPerPerson()
-  const packingProgress = calculatePackingProgress()
-
-  return (
-    <div>
-      {/* Alert */}
-      <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-lg mb-5">
-        <div className="font-semibold text-blue-800">👋 Willkommen zurück!</div>
-        <div className="text-sm text-blue-700">
-          Deine {currentTrip?.name} beginnt in {daysUntil} Tagen. Zeit zum Packen!
-        </div>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 gap-4 mb-5">
-        <div className="bg-gradient-to-br from-[#667eea] to-[#764ba2] text-white p-5 rounded-2xl text-center">
-          <div className="text-3xl font-bold mb-1">€{total.toFixed(2)}</div>
-          <div className="text-xs opacity-90">💰 Gesamtkosten</div>
-        </div>
-        <div className="bg-gradient-to-br from-[#667eea] to-[#764ba2] text-white p-5 rounded-2xl text-center">
-          <div className="text-3xl font-bold mb-1">€{perPerson.toFixed(2)}</div>
-          <div className="text-xs opacity-90">👤 Pro Person</div>
-        </div>
-        <div className="bg-gradient-to-br from-[#667eea] to-[#764ba2] text-white p-5 rounded-2xl text-center">
-          <div className="text-3xl font-bold mb-1">{duration} Tage</div>
-          <div className="text-xs opacity-90">📅 Reisedauer</div>
-        </div>
-        <div className="bg-gradient-to-br from-[#667eea] to-[#764ba2] text-white p-5 rounded-2xl text-center">
-          <div className="text-3xl font-bold mb-1">{packingProgress}%</div>
-          <div className="text-xs opacity-90">🎒 Gepackt</div>
-        </div>
-      </div>
-
-      {/* Recent Activities */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm mb-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-800">Letzte Aktivitäten</h3>
-          <span className="text-xl">📝</span>
-        </div>
-        
-        {expenses.slice(0, 3).map(expense => (
-          <div key={expense.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl mb-2">
-            <span className="text-2xl">{getExpenseIcon(expense.category)}</span>
-            <div className="flex-1">
-              <div className="font-medium text-sm text-gray-800">{expense.description}</div>
-              <div className="text-xs text-gray-500">Bezahlt von {expense.paid_by}</div>
-            </div>
-            <div className="font-bold text-[#667eea]">€{expense.amount.toFixed(2)}</div>
-          </div>
-        ))}
-        
-        {packingProgress > 0 && (
-          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-            <span className="text-2xl">🎒</span>
-            <div className="flex-1">
-              <div className="font-medium text-sm text-gray-800">Packliste aktualisiert</div>
-              <div className="text-xs text-gray-500">{packingItems.filter(i => i.packed).length} von {packingItems.length} Items</div>
-            </div>
-            <div className="font-bold text-[#667eea]">{packingProgress}%</div>
-          </div>
-        )}
-      </div>
-
-      {/* Next Activities */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-800">Nächste Aktivitäten</h3>
-          <span className="text-xl">🎯</span>
-        </div>
-        
-        {itineraryItems.slice(0, 3).map(item => (
-          <div key={item.id} className="p-4 bg-gray-50 rounded-xl mb-3">
-            <div className="font-semibold mb-1">{item.title}</div>
-            <div className="text-sm text-gray-600">Tag {item.day} • {item.time} Uhr</div>
-          </div>
-        ))}
-
-        {itineraryItems.length === 0 && (
-          <div className="text-center py-8 text-gray-400">
-            <div className="text-4xl mb-2">📅</div>
-            <div className="text-sm">Noch keine Aktivitäten geplant</div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function renderExpenses() {
-  // Calculate category totals
-  const categoryTotals: { [key: string]: number } = {}
-  let total = 0
-  
-  expenses.forEach(expense => {
-    categoryTotals[expense.category] = (categoryTotals[expense.category] || 0) + expense.amount
-    total += expense.amount
-  })
-
-  const categories = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])
-{showAddExpenseModal && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-    <div className="bg-white rounded-3xl p-6 max-w-md w-full">
-      <div className="flex items-center justify-between mb-5">
-        <h3 className="text-xl font-bold">💰 Neue Ausgabe</h3>
-        <button onClick={() => setShowAddExpenseModal(false)} className="text-2xl">×</button>
-      </div>
-      
-      <div className="space-y-4">
-        <input
-          type="text"
-          placeholder="Beschreibung"
-          value={newExpense.description}
-          onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
-          className="w-full p-3 border-2 border-gray-200 rounded-xl"
-        />
-        <input
-          type="number"
-          placeholder="Betrag"
-          value={newExpense.amount}
-          onChange={(e) => setNewExpense({...newExpense, amount: parseFloat(e.target.value)})}
-          className="w-full p-3 border-2 border-gray-200 rounded-xl"
-        />
-        <select
-          value={newExpense.category}
-          onChange={(e) => setNewExpense({...newExpense, category: e.target.value})}
-          className="w-full p-3 border-2 border-gray-200 rounded-xl"
-        >
-          <option>Transport</option>
-          <option>Unterkunft</option>
-          <option>Essen</option>
-          <option>Aktivität</option>
-          <option>Shopping</option>
-          <option>Sonstiges</option>
-        </select>
-        <button
-          onClick={createExpense}
-          className="w-full bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white py-3 rounded-xl font-semibold"
-        >
-          ✨ Hinzufügen
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-  
-  return (
-    <div>
-      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg mb-5">
-        <div className="font-semibold text-yellow-800">💡 Tipp</div>
-        <div className="text-sm text-yellow-700">Füge alle Ausgaben hinzu für eine faire Abrechnung!</div>
-      </div>
-
-      <div className="bg-white rounded-2xl p-5 shadow-sm mb-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-800">Alle Ausgaben</h3>
-          <button 
-            className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-4 py-2 rounded-full text-sm font-semibold"
-            onClick={() => setShowAddExpenseModal(true)} 
-          >
-            + Neu
-          </button>
-        </div>
-
-        {expenses.map(expense => (
-          <div key={expense.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl mb-2">
-            <span className="text-2xl">{getExpenseIcon(expense.category)}</span>
-            <div className="flex-1">
-              <div className="font-medium text-sm text-gray-800">{expense.description}</div>
-              <div className="text-xs text-gray-500">Bezahlt von {expense.paid_by} • {expense.category}</div>
-            </div>
-            <div className="font-bold text-[#667eea]">€{expense.amount.toFixed(2)}</div>
-          </div>
-        ))}
-
-        {expenses.length === 0 && (
-          <div className="text-center py-8 text-gray-400">
-            <div className="text-4xl mb-2">💰</div>
-            <div className="text-sm">Noch keine Ausgaben vorhanden</div>
-          </div>
-        )}
-      </div>
-
-      {categories.length > 0 && (
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-gray-800">Kosten pro Kategorie</h3>
-            <span className="text-xl">📊</span>
-          </div>
-
-          {categories.map(([category, amount]) => {
-            const percentage = total > 0 ? (amount / total) * 100 : 0
-            return (
-              <div key={category} className="mb-4">
-                <div className="flex justify-between mb-1">
-                  <span className="text-sm">{getExpenseIcon(category)} {category}</span>
-                  <span className="font-semibold">€{amount.toFixed(2)} ({percentage.toFixed(0)}%)</span>
-                </div>
-                <div className="bg-gray-200 h-2 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-[#667eea] h-full rounded-full transition-all"
-                    style={{ width: `${percentage}%` }}
-                  />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function renderItinerary() {
-  const dayItems = itineraryItems.filter(item => item.day === selectedDay)
-  const maxDay = Math.max(...itineraryItems.map(i => i.day), 5)
-
-  return (
-    <div>
-      {/* Day Selector */}
-      <div className="flex gap-2 overflow-x-auto pb-3 mb-5">
-        {Array.from({ length: maxDay }, (_, i) => i + 1).map(day => (
-          <button
-            key={day}
-            onClick={() => setSelectedDay(day)}
-            className={`flex-shrink-0 px-5 py-2 rounded-xl font-semibold transition-all ${
-              selectedDay === day
-                ? 'bg-[#667eea] text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            Tag {day}
-          </button>
-        ))}
-      </div>
-
-      <h3 className="text-lg font-bold text-gray-800 mb-4">
-        📅 {currentTrip && new Date(new Date(currentTrip.start_date).getTime() + (selectedDay - 1) * 86400000).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
-      </h3>
-
-      {dayItems.map(item => (
-        <div key={item.id} className="flex gap-4 mb-5">
-          <div className="bg-[#667eea] text-white px-3 py-2 rounded-xl font-semibold text-sm h-fit min-w-[60px] text-center">
-            {item.time}
-          </div>
-          <div className="flex-1 bg-gray-50 p-4 rounded-xl">
-            <div className="font-bold text-gray-800 mb-1">{item.title}</div>
-            <div className="text-sm text-gray-600 mb-2">{item.details}</div>
-            <span className="inline-block bg-[#667eea] text-white text-xs px-3 py-1 rounded-full">
-              {item.type}
-            </span>
-          </div>
-        </div>
-      ))}
-
-      {dayItems.length === 0 && (
-        <div className="text-center py-12 text-gray-400">
-          <div className="text-5xl mb-3">🗓️</div>
-          <div className="text-lg font-semibold mb-2">Noch nichts geplant</div>
-          <div className="text-sm">Füge Aktivitäten für Tag {selectedDay} hinzu</div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function renderPacking() {
-  const progress = calculatePackingProgress()
-  const grouped: { [key: string]: PackingItem[] } = {}
-  
-  packingItems.forEach(item => {
-    if (!grouped[item.category]) grouped[item.category] = []
-    grouped[item.category].push(item)
-  })
-
-  const season = currentTrip ? getSeason(currentTrip.start_date) : 'summer'
-  const seasonInfo = packingTemplates[season]
-
-  return (
-    <div>
-      {/* Progress */}
-      <div className="bg-gradient-to-br from-[#667eea] to-[#764ba2] text-white rounded-2xl p-5 text-center mb-5">
-        <div className="text-base mb-2">Dein Pack-Fortschritt</div>
-        <div className="text-4xl font-bold mb-4">{progress}%</div>
-        <div className="bg-white/30 h-3 rounded-full overflow-hidden">
-          <div 
-            className="bg-white h-full rounded-full transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-
-      <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-lg mb-5">
-        <div className="font-semibold text-blue-800">{seasonInfo.icon} {seasonInfo.name}-Packliste</div>
-        <div className="text-sm text-blue-700">Basierend auf deinem Reisedatum ({currentTrip && new Date(currentTrip.start_date).toLocaleDateString('de-DE', { month: 'long' })})</div>
-      </div>
-
-      {progress === 100 && (
-        <div className="bg-green-50 border-l-4 border-green-400 p-5 rounded-lg mb-5 text-center">
-          <div className="text-5xl mb-3">🎉</div>
-          <div className="text-xl font-bold text-green-800 mb-2">Perfekt gepackt!</div>
-          <div className="text-sm text-green-700">Alle Items sind abgehakt. Du bist bereit! ✈️</div>
-        </div>
-      )}
-
-      {Object.entries(grouped).map(([category, items]) => {
-        const packedCount = items.filter(i => i.packed).length
-        return (
-          <div key={category} className="mb-6">
-            <div className="flex items-center gap-3 pb-2 border-b-2 border-gray-200 mb-3">
-              <span className="text-2xl">{category.split(' ')[0]}</span>
-              <h3 className="text-lg font-bold text-gray-800 flex-1">
-                {category.split(' ').slice(1).join(' ')}
-              </h3>
-              <span className="text-sm bg-gray-100 px-3 py-1 rounded-full">
-                {packedCount}/{items.length}
-              </span>
-            </div>
-
-            {items.map(item => (
-              <div
-                key={item.id}
-                onClick={() => togglePackingItem(item.id)}
-                className={`flex items-center gap-3 p-3 rounded-xl mb-2 cursor-pointer transition-all hover:translate-x-1 ${
-                  item.packed ? 'bg-green-50 opacity-70' : 'bg-gray-50 hover:bg-gray-100'
-                }`}
-              >
-                <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
-                  item.packed ? 'bg-[#667eea] border-[#667eea]' : 'border-[#667eea]'
-                }`}>
-                  {item.packed && <span className="text-white text-sm">✓</span>}
-                </div>
-                <div className="flex-1">
-                  <div className={`text-sm font-medium ${item.packed ? 'line-through text-gray-500' : 'text-gray-800'}`}>
-                    {item.item}
-                  </div>
-                  {item.essential && (
-                    <span className="inline-block bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-lg mt-1">
-                      ⭐ Wichtig
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )
-      })}
-
-      {packingItems.length === 0 && (
-        <div className="text-center py-12 text-gray-400">
-          <div className="text-5xl mb-3">🎒</div>
-          <div className="text-lg font-semibold mb-2">Packliste wird erstellt...</div>
-          <div className="text-sm">Lade die Seite neu</div>
-        </div>
-      )}
-
-      <button
-        onClick={() => {
-          if (confirm('Möchtest du wirklich alle Items zurücksetzen?')) {
-            packingItems.forEach(item => {
-              if (item.packed) {
-                supabase.from('packing_items').update({ packed: false }).eq('id', item.id).then(() => {
-                  setPackingItems(packingItems.map(i => ({ ...i, packed: false })))
-                })
-              }
-            })
-          }
-        }}
-        className="w-full bg-gray-100 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-200 transition-all mt-3"
-      >
-        🔄 Alles zurücksetzen
-      </button>
-    </div>
-  )
-}
-
-function renderSettlement() {
-  // Simplified settlement calculation for demo
-  // In real app, calculate based on actual expense data
-  return (
-    <div>
-      <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-lg mb-5">
-        <div className="font-semibold text-green-800">✅ Abrechnung berechnet!</div>
-        <div className="text-sm text-green-700">Basierend auf allen Ausgaben</div>
-      </div>
-
-      <div className="bg-white rounded-2xl p-5 shadow-sm mb-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-800">Wer schuldet wem?</h3>
-          <span className="text-xl">💸</span>
-        </div>
-
-        <div className="text-center py-8 text-gray-400">
-          <div className="text-4xl mb-2">💳</div>
-          <div className="text-sm">Abrechnung wird berechnet...</div>
-          <div className="text-xs mt-2">Basierend auf {expenses.length} Ausgaben</div>
-        </div>
-      </div>
-
-      <button
-        onClick={() => alert('In der Vollversion kannst du die Abrechnung als PDF exportieren!')}
-        className="w-full bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
-      >
-        📄 Als PDF exportieren
-      </button>
-    </div>
-  )
-}
-
-function renderAdmin() {
-  return (
-    <div>
-      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg mb-5">
-        <div className="font-semibold text-yellow-800">👑 Admin-Bereich</div>
-        <div className="text-sm text-yellow-700">Verwalte Benutzer und Einstellungen</div>
-      </div>
-
-      <div className="bg-white rounded-2xl p-5 shadow-sm mb-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-800">Reise-Einstellungen</h3>
-          <span className="text-xl">⚙️</span>
-        </div>
-
-        <div className="mb-4">
-          <label className="block font-semibold text-gray-700 mb-2 text-sm">🏨 Reisename</label>
-          <input
-            type="text"
-            value={currentTrip?.name}
-            readOnly
-            className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-          />
-        </div>
-
-        <div className="mb-4">
-          <label className="block font-semibold text-gray-700 mb-2 text-sm">📍 Reiseziel</label>
-          <input
-            type="text"
-            value={currentTrip?.destination}
-            readOnly
-            className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div>
-            <label className="block font-semibold text-gray-700 mb-2 text-sm">📅 Start</label>
-            <input
-              type="date"
-              value={currentTrip?.start_date}
-              readOnly
-              className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-            />
-          </div>
-          <div>
-            <label className="block font-semibold text-gray-700 mb-2 text-sm">📅 Ende</label>
-            <input
-              type="date"
-              value={currentTrip?.end_date}
-              readOnly
-              className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-            />
-          </div>
-        </div>
-
-        <button
-          onClick={() => alert('Einstellungen gespeichert! ✅')}
-          className="w-full bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white py-3 rounded-xl font-semibold"
-        >
-          💾 Einstellungen speichern
-        </button>
-      </div>
-
-      <div className="bg-white rounded-2xl p-5 shadow-sm mb-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-800">Statistiken</h3>
-          <span className="text-xl">📊</span>
-        </div>
-
-        <div className="space-y-3">
-          <div className="flex justify-between p-3 bg-gray-50 rounded-xl">
-            <span className="text-gray-600">💰 Ausgaben:</span>
-            <span className="font-bold">{expenses.length} Einträge</span>
-          </div>
-          <div className="flex justify-between p-3 bg-gray-50 rounded-xl">
-            <span className="text-gray-600">📅 Aktivitäten:</span>
-            <span className="font-bold">{itineraryItems.length} geplant</span>
-          </div>
-          <div className="flex justify-between p-3 bg-gray-50 rounded-xl">
-            <span className="text-gray-600">🎒 Pack-Items:</span>
-            <span className="font-bold">{packingItems.length} Stück</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-gradient-to-br from-[#667eea] to-[#764ba2] text-white rounded-2xl p-6 text-center">
-        <div className="text-5xl mb-3">👑</div>
-        <div className="text-lg font-bold mb-1">Du bist Admin</div>
-        <div className="text-sm opacity-90">Volle Kontrolle über diese Reise</div>
-      </div>
-    </div>
-  )
-}
-  // =====================================================
-// FREUNDE & EINLADUNGEN KOMPONENTE
-// =====================================================
-
-function renderFriendsAndInvitations() {
-  const [tripMembers, setTripMembers] = useState<TripMember[]>([])
-  const [invitations, setInvitations] = useState<Invitation[]>([])
-  const [showInviteModal, setShowInviteModal] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [userRole, setUserRole] = useState<'owner' | 'admin' | 'member'>('member')
-
-  useEffect(() => {
-    loadTripMembers()
-    loadInvitations()
-  }, [currentTrip])
-
-  const loadTripMembers = async () => {
-    if (!currentTrip) return
-
-    try {
-      const { data, error } = await supabase
-        .from('trip_members')
-        .select(`
-          *,
-          user:users(*)
-        `)
-        .eq('trip_id', currentTrip.id)
-
-      if (error) throw error
-      
-      setTripMembers(data || [])
-
-      // Find current user's role
-      const currentMember = data?.find(m => m.user_id === currentUser.id)
-      if (currentMember) {
-        setUserRole(currentMember.role)
-      }
-    } catch (error) {
-      console.error('Error loading members:', error)
-    }
-  }
-
-  const loadInvitations = async () => {
-    if (!currentTrip) return
-
-    try {
-      const { data, error } = await supabase
-        .from('invitations')
-        .select(`
-          *,
-          inviter:users!invited_by(*)
-        `)
-        .eq('trip_id', currentTrip.id)
-        .eq('status', 'pending')
-
-      if (error) throw error
-      setInvitations(data || [])
-    } catch (error) {
-      console.error('Error loading invitations:', error)
-    }
-  }
-
-  const sendInvitation = async () => {
-    if (!currentTrip) return
-
-    try {
-      // Generate token
-      const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('')
-
-      // Check if user exists
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', inviteEmail)
-        .single()
-
-      // Check if already member
-      if (existingUser) {
-        const { data: existingMember } = await supabase
-          .from('trip_members')
-          .select('id')
-          .eq('trip_id', currentTrip.id)
-          .eq('user_id', existingUser.id)
-          .single()
-
-        if (existingMember) {
-          alert('❌ Diese Person ist bereits Mitglied der Reise')
-          return
-        }
-      }
-
-      // Create invitation
-      const { error } = await supabase
-        .from('invitations')
-        .insert({
-          trip_id: currentTrip.id,
-          invited_by: currentUser.id,
-          invited_email: inviteEmail,
-          invited_user_id: existingUser?.id,
-          token,
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          status: 'pending'
-        })
-
-      if (error) throw error
-
-      // Generate invite link
-      const inviteLink = `${window.location.origin}/invite/${token}`
-
-      // Copy to clipboard
-      navigator.clipboard.writeText(inviteLink)
-
-      alert(`✅ Einladung erstellt!\n\n📋 Link wurde in die Zwischenablage kopiert:\n${inviteLink}\n\nSchicke diesen Link an ${inviteEmail}`)
-
-      setShowInviteModal(false)
-      setInviteEmail('')
-      loadInvitations()
-    } catch (error) {
-      console.error('Error sending invitation:', error)
-      alert('❌ Fehler beim Erstellen der Einladung')
-    }
-  }
-
-  const removeMember = async (memberId: string, memberName: string) => {
-    if (!confirm(`Möchtest du ${memberName} wirklich aus der Reise entfernen?`)) {
-      return
-    }
-
-    try {
-      const { error } = await supabase
-        .from('trip_members')
-        .delete()
-        .eq('id', memberId)
-
-      if (error) throw error
-
-      alert(`✅ ${memberName} wurde entfernt`)
-      loadTripMembers()
-    } catch (error) {
-      console.error('Error removing member:', error)
-      alert('❌ Fehler beim Entfernen des Mitglieds')
-    }
-  }
-
-  const cancelInvitation = async (invitationId: string) => {
-    try {
-      const { error } = await supabase
-        .from('invitations')
-        .delete()
-        .eq('id', invitationId)
-
-      if (error) throw error
-
-      alert('✅ Einladung zurückgezogen')
-      loadInvitations()
-    } catch (error) {
-      console.error('Error canceling invitation:', error)
-      alert('❌ Fehler beim Zurückziehen der Einladung')
-    }
-  }
-
-  const canManageMembers = userRole === 'owner' || userRole === 'admin'
-
-  return (
-    <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-xl font-bold text-gray-800">👥 Teilnehmer</h2>
-        {canManageMembers && (
-          <button
-            onClick={() => setShowInviteModal(true)}
-            className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-4 py-2 rounded-full text-sm font-semibold"
-          >
-            ➕ Einladen
-          </button>
-        )}
-      </div>
-
-      {/* Current Trip Info */}
-      <div className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white rounded-2xl p-4 mb-5">
-        <div className="flex items-center gap-3 mb-2">
-          <span className="text-3xl">{currentTrip?.flag}</span>
-          <div>
-            <div className="font-bold">{currentTrip?.name}</div>
-            <div className="text-sm opacity-90">{currentTrip?.destination}</div>
-          </div>
-        </div>
-        <div className="text-sm opacity-90">
-          {tripMembers.length} {tripMembers.length === 1 ? 'Person' : 'Personen'} •{' '}
-          {invitations.length > 0 && `${invitations.length} ausstehende Einladung${invitations.length > 1 ? 'en' : ''}`}
-        </div>
-      </div>
-
-      {/* Members List */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm mb-5">
-        <h3 className="font-bold text-gray-800 mb-3">Mitglieder</h3>
-
-        {tripMembers.map(member => (
-          <div key={member.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl mb-2">
-            <div className="w-10 h-10 bg-gradient-to-br from-[#667eea] to-[#764ba2] rounded-full flex items-center justify-center text-white font-bold">
-              {member.user?.name?.charAt(0).toUpperCase()}
-            </div>
-            
-            <div className="flex-1">
-              <div className="font-semibold text-sm text-gray-800">
-                {member.user?.name}
-                {member.user_id === currentUser.id && (
-                  <span className="text-xs text-gray-500 ml-2">(Du)</span>
-                )}
-              </div>
-              <div className="text-xs text-gray-500">{member.user?.email}</div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {member.role === 'owner' && (
-                <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full font-semibold">
-                  👑 Owner
-                </span>
-              )}
-              {member.role === 'admin' && (
-                <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-semibold">
-                  ⭐ Admin
-                </span>
-              )}
-              {member.role === 'member' && (
-                <span className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-full">
-                  Mitglied
-                </span>
-              )}
-
-              {canManageMembers && member.role !== 'owner' && member.user_id !== currentUser.id && (
-                <button
-                  onClick={() => removeMember(member.id, member.user?.name || 'Benutzer')}
-                  className="text-red-500 hover:text-red-700 text-sm"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Pending Invitations */}
-      {invitations.length > 0 && (
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <h3 className="font-bold text-gray-800 mb-3">⏳ Ausstehende Einladungen</h3>
-
-          {invitations.map(invitation => (
-            <div key={invitation.id} className="flex items-center gap-3 p-3 bg-yellow-50 rounded-xl mb-2">
-              <div className="w-10 h-10 bg-yellow-200 rounded-full flex items-center justify-center">
-                📧
-              </div>
-              
-              <div className="flex-1">
-                <div className="font-semibold text-sm text-gray-800">
-                  {invitation.invited_email}
-                </div>
-                <div className="text-xs text-gray-500">
-                  Eingeladen von {invitation.inviter?.name}
-                </div>
-              </div>
-
-              {canManageMembers && (
-                <button
-                  onClick={() => cancelInvitation(invitation.id)}
-                  className="text-xs text-red-500 hover:text-red-700"
-                >
-                  Zurückziehen
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Your Role Info */}
-      <div className="mt-5 p-4 bg-blue-50 rounded-xl">
-        <div className="text-sm text-blue-800">
-          <strong>Deine Rolle:</strong>{' '}
-          {userRole === 'owner' && '👑 Owner (volle Kontrolle)'}
-          {userRole === 'admin' && '⭐ Admin (kann andere einladen)'}
-          {userRole === 'member' && 'Mitglied (kann alle Features nutzen)'}
-        </div>
-      </div>
-
-      {/* Invite Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-xl font-bold text-gray-800">✉️ Freund einladen</h3>
-              <button
-                onClick={() => setShowInviteModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  E-Mail-Adresse
-                </label>
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="freund@example.com"
-                  className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-                />
-              </div>
-
-              <div className="bg-blue-50 p-4 rounded-xl text-sm text-blue-800">
-                <strong>💡 Hinweis:</strong><br />
-                Dein Freund erhält einen Einladungs-Link, mit dem er der Reise beitreten kann.
-                Der Link ist 7 Tage gültig.
-              </div>
-
-              <button
-                onClick={sendInvitation}
-                disabled={!inviteEmail || !inviteEmail.includes('@')}
-                className="w-full bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
-              >
-                📨 Einladung senden
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-// =====================================================
-// KARTEN-KOMPONENTE
-// Zeigt alle Locations auf einer interaktiven Karte
-// =====================================================
-
-// INSTALLATION BENÖTIGT:
-// npm install leaflet react-leaflet
-// npm install --save-dev @types/leaflet
-
-'use client'
-
-import { useEffect, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-
-// Fix für Leaflet Icons in Next.js
-delete (L.Icon.Default.prototype as any)._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-})
-
-// Custom Icons für verschiedene Location-Typen
-const getMarkerIcon = (type: string) => {
-  const icons: { [key: string]: string } = {
-    accommodation: '🏨',
-    restaurant: '🍽️',
-    activity: '🎫',
-    transport: '✈️',
-    other: '📍'
-  }
-
-  return L.divIcon({
-    html: `<div style="font-size: 24px;">${icons[type] || '📍'}</div>`,
-    className: 'custom-marker',
-    iconSize: [30, 30],
-    iconAnchor: [15, 30],
-    popupAnchor: [0, -30]
-  })
-}
-
-function renderMapView() {
-  const [locations, setLocations] = useState<Location[]>([])
-  const [expenses, setExpenses] = useState<Expense[]>([])
-  const [showAddLocationModal, setShowAddLocationModal] = useState(false)
   const [newLocation, setNewLocation] = useState({
     name: '',
     address: '',
-    type: 'activity' as const,
+    type: 'activity' as 'hotel' | 'restaurant' | 'activity' | 'transport' | 'other',
     notes: ''
   })
-  const [mapCenter, setMapCenter] = useState<[number, number]>([41.3851, 2.1734]) // Barcelona default
 
+  const [newExpense, setNewExpense] = useState({
+    category: 'Sonstiges',
+    description: '',
+    amount: 0,
+    paid_by: 'Max',
+    split_between: ['Max', 'Anna', 'Tom']
+  })
+
+  const [newActivity, setNewActivity] = useState({
+    day: 1,
+    time: '10:00',
+    title: '',
+    details: '',
+    type: 'Aktivität'
+  })
+
+  // ========== LOAD DATA ==========
   useEffect(() => {
-    loadLocations()
-    loadExpenses()
-  }, [currentTrip])
+    loadInitialData()
+  }, [])
 
-  const loadLocations = async () => {
-    if (!currentTrip) return
-
-    try {
-      const { data, error } = await supabase
-        .from('locations')
-        .select('*')
-        .eq('trip_id', currentTrip.id)
-        .order('created_at', { ascending: true })
-
-      if (error) throw error
-      
-      setLocations(data || [])
-      
-      // Center map on first location
-      if (data && data.length > 0) {
-        setMapCenter([data[0].latitude, data[0].longitude])
-      }
-    } catch (error) {
-      console.error('Error loading locations:', error)
+  const loadInitialData = async () => {
+    await loadAllTrips()
+    if (!currentTrip) {
+      // Demo-Daten nur wenn keine Reise existiert
+      loadDemoData()
     }
   }
 
-  const loadExpenses = async () => {
-    if (!currentTrip) return
+  const loadDemoData = () => {
+    const demoTrip = {
+      id: 'demo-trip-1',
+      name: 'Barcelona Städtetrip',
+      destination: 'Barcelona, Spanien',
+      flag: '🇪🇸',
+      start_date: '2024-06-15',
+      end_date: '2024-06-22',
+      budget: 2000,
+      currency: 'EUR',
+      status: 'active',
+      created_by: currentUser.id
+    }
+    
+    setCurrentTrip(demoTrip)
+    setAllUserTrips([demoTrip])
+
+    setExpenses([
+      { id: 1, trip_id: demoTrip.id, category: 'Unterkunft', description: 'Hotel Gothic Quarter', amount: 450, paid_by: 'Max', split_between: ['Max', 'Anna', 'Tom'], date: '2024-06-15' },
+      { id: 2, trip_id: demoTrip.id, category: 'Transport', description: 'Flüge Zürich-Barcelona', amount: 380, paid_by: 'Anna', split_between: ['Max', 'Anna', 'Tom'], date: '2024-06-15' },
+      { id: 3, trip_id: demoTrip.id, category: 'Essen', description: 'Dinner im Cervecería', amount: 75, paid_by: 'Tom', split_between: ['Max', 'Anna', 'Tom'], date: '2024-06-16' },
+      { id: 4, trip_id: demoTrip.id, category: 'Aktivitäten', description: 'Sagrada Familia Tickets', amount: 90, paid_by: 'Max', split_between: ['Max', 'Anna', 'Tom'], date: '2024-06-17' }
+    ])
+
+    setItineraryItems([
+      { id: 1, trip_id: demoTrip.id, day: 1, time: '10:00', title: 'Ankunft & Check-in', details: 'Hotel Gothic Quarter', type: 'Check-in' },
+      { id: 2, trip_id: demoTrip.id, day: 1, time: '14:00', title: 'Las Ramblas', details: 'Spaziergang durch die berühmte Straße', type: 'Aktivität' },
+      { id: 3, trip_id: demoTrip.id, day: 2, time: '09:00', title: 'Sagrada Familia', details: 'Tickets vorbestellt', type: 'Sehenswürdigkeit' },
+      { id: 4, trip_id: demoTrip.id, day: 2, time: '15:00', title: 'Park Güell', details: 'Gaudí Park', type: 'Sehenswürdigkeit' }
+    ])
+
+    setPackingLists([
+      { id: 1, trip_id: demoTrip.id, category: 'Kleidung', item: 'T-Shirts (5x)', packed: true },
+      { id: 2, trip_id: demoTrip.id, category: 'Kleidung', item: 'Shorts/Hosen', packed: true },
+      { id: 3, trip_id: demoTrip.id, category: 'Dokumente', item: 'Reisepass', packed: false },
+      { id: 4, trip_id: demoTrip.id, category: 'Elektronik', item: 'Smartphone + Ladekabel', packed: false }
+    ])
+
+    setTripMembers([
+      { id: 1, trip_id: demoTrip.id, user_id: 'demo-user-1', role: 'owner', user: { name: 'Max Mustermann', email: 'max@example.com' } },
+      { id: 2, trip_id: demoTrip.id, user_id: 'demo-user-2', role: 'admin', user: { name: 'Anna Schmidt', email: 'anna@example.com' } },
+      { id: 3, trip_id: demoTrip.id, user_id: 'demo-user-3', role: 'member', user: { name: 'Tom Müller', email: 'tom@example.com' } }
+    ])
+
+    calculateSettlements()
+  }
+
+  // ========== V2 FUNCTIONS ==========
+
+  // Alle User-Reisen laden
+  const loadAllTrips = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('trips')
+        .select('*, trip_members(*)')
+        .eq('created_by', currentUser.id)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      if (data && data.length > 0) {
+        setAllUserTrips(data)
+        if (!currentTrip) {
+          setCurrentTrip(data[0])
+          await loadTripData(data[0].id)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading trips:', error)
+    }
+  }
+
+  // Trip-Daten laden
+  const loadTripData = async (tripId: string) => {
+    try {
+      const [expensesRes, itineraryRes, packingRes, membersRes, locationsRes] = await Promise.all([
+        supabase.from('expenses').select('*').eq('trip_id', tripId),
+        supabase.from('itinerary').select('*').eq('trip_id', tripId).order('day', { ascending: true }),
+        supabase.from('packing_list').select('*').eq('trip_id', tripId),
+        supabase.from('trip_members').select('*, user:users(*)').eq('trip_id', tripId),
+        supabase.from('locations').select('*').eq('trip_id', tripId)
+      ])
+
+      if (expensesRes.data) setExpenses(expensesRes.data)
+      if (itineraryRes.data) setItineraryItems(itineraryRes.data)
+      if (packingRes.data) setPackingLists(packingRes.data)
+      if (membersRes.data) setTripMembers(membersRes.data)
+      if (locationsRes.data) setLocations(locationsRes.data)
+
+      calculateSettlements()
+    } catch (error) {
+      console.error('Error loading trip data:', error)
+    }
+  }
+
+  // Neue Reise erstellen
+  const createNewTrip = async () => {
+    if (!newTripData.name || !newTripData.destination) {
+      alert('❌ Bitte Name und Ziel eingeben!')
+      return
+    }
+
+    try {
+      const { data: tripData, error: tripError } = await supabase
+        .from('trips')
+        .insert({
+          ...newTripData,
+          status: 'active',
+          created_by: currentUser.id
+        })
+        .select()
+        .single()
+
+      if (tripError) throw tripError
+
+      // User als Owner hinzufügen
+      await supabase.from('trip_members').insert({
+        trip_id: tripData.id,
+        user_id: currentUser.id,
+        role: 'owner'
+      })
+
+      setShowNewTripModal(false)
+      setNewTripData({
+        name: '',
+        destination: '',
+        flag: '🌍',
+        start_date: '',
+        end_date: '',
+        budget: 0,
+        currency: 'EUR'
+      })
+      setCurrentTrip(tripData)
+      await loadAllTrips()
+      alert('✅ Reise erstellt!')
+    } catch (error) {
+      alert('❌ Fehler: ' + (error as Error).message)
+    }
+  }
+
+  // Ausgabe hinzufügen
+  const createExpense = async () => {
+    if (!currentTrip || !newExpense.description || newExpense.amount <= 0) {
+      alert('❌ Bitte alle Felder ausfüllen!')
+      return
+    }
 
     try {
       const { data, error } = await supabase
         .from('expenses')
-        .select('*')
-        .eq('trip_id', currentTrip.id)
+        .insert({
+          trip_id: currentTrip.id,
+          ...newExpense,
+          date: new Date().toISOString().split('T')[0]
+        })
+        .select()
+        .single()
 
       if (error) throw error
-      setExpenses(data || [])
+
+      setExpenses([...expenses, data])
+      setShowAddExpenseModal(false)
+      setNewExpense({
+        category: 'Sonstiges',
+        description: '',
+        amount: 0,
+        paid_by: 'Max',
+        split_between: ['Max', 'Anna', 'Tom']
+      })
+      calculateSettlements()
+      alert('✅ Ausgabe hinzugefügt!')
     } catch (error) {
-      console.error('Error loading expenses:', error)
+      alert('❌ Fehler: ' + (error as Error).message)
     }
   }
 
-  const addLocation = async () => {
-    if (!currentTrip) return
+  // Aktivität hinzufügen
+  const createActivity = async () => {
+    if (!currentTrip || !newActivity.title) {
+      alert('❌ Bitte Titel eingeben!')
+      return
+    }
 
     try {
-      // Geocode address
-      const coords = await geocodeAddress(newLocation.address)
+      const { data, error } = await supabase
+        .from('itinerary')
+        .insert({
+          trip_id: currentTrip.id,
+          ...newActivity
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setItineraryItems([...itineraryItems, data])
+      setShowAddActivityModal(false)
+      setNewActivity({
+        day: 1,
+        time: '10:00',
+        title: '',
+        details: '',
+        type: 'Aktivität'
+      })
+      alert('✅ Aktivität hinzugefügt!')
+    } catch (error) {
+      alert('❌ Fehler: ' + (error as Error).message)
+    }
+  }
+
+  // Einladung senden
+  const sendInvitation = async () => {
+    if (!currentTrip || !inviteEmail.includes('@')) {
+      alert('❌ Bitte gültige E-Mail eingeben!')
+      return
+    }
+
+    try {
+      const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
       
+      const { error } = await supabase.from('invitations').insert({
+        trip_id: currentTrip.id,
+        invited_by: currentUser.id,
+        invited_email: inviteEmail,
+        token,
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'pending'
+      })
+
+      if (error) throw error
+
+      const link = `${window.location.origin}/invite/${token}`
+      await navigator.clipboard.writeText(link)
+      
+      alert(`✅ Einladung erstellt!\n\n📋 Link kopiert:\n${link}`)
+      setShowInviteModal(false)
+      setInviteEmail('')
+    } catch (error) {
+      alert('❌ Fehler: ' + (error as Error).message)
+    }
+  }
+
+  // Ort hinzufügen
+  const addLocation = async () => {
+    if (!currentTrip || !newLocation.name || !newLocation.address) {
+      alert('❌ Bitte Name und Adresse eingeben!')
+      return
+    }
+
+    try {
+      const coords = await geocodeAddress(newLocation.address)
       if (!coords) {
-        alert('❌ Adresse konnte nicht gefunden werden')
+        alert('❌ Adresse nicht gefunden!')
         return
       }
 
@@ -1640,607 +363,1113 @@ function renderMapView() {
         type: 'activity',
         notes: ''
       })
-
       alert('✅ Ort hinzugefügt!')
     } catch (error) {
-      console.error('Error adding location:', error)
-      alert('❌ Fehler beim Hinzufügen des Ortes')
+      alert('❌ Fehler: ' + (error as Error).message)
     }
   }
 
-  const getTotalExpenses = () => {
-    return expenses.reduce((sum, expense) => sum + expense.amount, 0)
+  // Geocoding Helper
+  async function geocodeAddress(address: string) {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`
+      )
+      const data = await res.json()
+      return data[0] ? { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) } : null
+    } catch {
+      return null
+    }
   }
 
-  const getExpensesByLocation = () => {
-    // Group expenses by their descriptions/categories
-    const grouped: { [key: string]: number } = {}
+  // ========== HELPER FUNCTIONS ==========
+
+  const calculateSettlements = () => {
+    if (expenses.length === 0) return
+
+    const balances: { [key: string]: number } = {}
     
     expenses.forEach(expense => {
-      const key = expense.description
-      grouped[key] = (grouped[key] || 0) + expense.amount
+      const splitAmount = expense.amount / expense.split_between.length
+      
+      if (!balances[expense.paid_by]) balances[expense.paid_by] = 0
+      balances[expense.paid_by] += expense.amount
+      
+      expense.split_between.forEach((person: string) => {
+        if (!balances[person]) balances[person] = 0
+        balances[person] -= splitAmount
+      })
     })
 
-    return grouped
-  }
-
-  return (
-    <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-xl font-bold text-gray-800">🗺️ Karte</h2>
-        <button
-          onClick={() => setShowAddLocationModal(true)}
-          className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-4 py-2 rounded-full text-sm font-semibold"
-        >
-          ➕ Ort
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 mb-5">
-        <div className="bg-blue-50 p-4 rounded-xl">
-          <div className="text-2xl font-bold text-blue-600">{locations.length}</div>
-          <div className="text-xs text-blue-600">📍 Orte</div>
-        </div>
-        <div className="bg-green-50 p-4 rounded-xl">
-          <div className="text-2xl font-bold text-green-600">
-            €{getTotalExpenses().toFixed(2)}
-          </div>
-          <div className="text-xs text-green-600">💰 Kosten</div>
-        </div>
-      </div>
-
-      {/* Map */}
-      <div className="bg-white rounded-2xl overflow-hidden shadow-sm mb-5" style={{ height: '400px' }}>
-        {typeof window !== 'undefined' && locations.length > 0 ? (
-          <MapContainer
-            center={mapCenter}
-            zoom={13}
-            style={{ height: '100%', width: '100%' }}
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            
-            {/* Markers */}
-            {locations.map(location => (
-              <Marker
-                key={location.id}
-                position={[location.latitude, location.longitude]}
-                icon={getMarkerIcon(location.type)}
-              >
-                <Popup>
-                  <div className="p-2">
-                    <div className="font-bold text-sm mb-1">{location.name}</div>
-                    {location.address && (
-                      <div className="text-xs text-gray-600 mb-2">{location.address}</div>
-                    )}
-                    {location.notes && (
-                      <div className="text-xs text-gray-700">{location.notes}</div>
-                    )}
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
-
-            {/* Route Line */}
-            {locations.length > 1 && (
-              <Polyline
-                positions={locations.map(l => [l.latitude, l.longitude])}
-                color="#667eea"
-                weight={3}
-                opacity={0.6}
-              />
-            )}
-          </MapContainer>
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-400">
-            <div className="text-center">
-              <div className="text-5xl mb-3">🗺️</div>
-              <div className="text-sm">Noch keine Orte hinzugefügt</div>
-              <button
-                onClick={() => setShowAddLocationModal(true)}
-                className="mt-3 text-sm text-[#667eea] font-semibold"
-              >
-                Ersten Ort hinzufügen
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Locations List */}
-      <div className="bg-white rounded-2xl p-5 shadow-sm mb-5">
-        <h3 className="font-bold text-gray-800 mb-3">📍 Alle Orte</h3>
-        
-        {locations.map(location => (
-          <div key={location.id} className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl mb-2">
-            <span className="text-2xl">{getMarkerIcon(location.type).options.html}</span>
-            <div className="flex-1">
-              <div className="font-semibold text-sm text-gray-800">{location.name}</div>
-              {location.address && (
-                <div className="text-xs text-gray-500">{location.address}</div>
-              )}
-              {location.notes && (
-                <div className="text-xs text-gray-600 mt-1">{location.notes}</div>
-              )}
-            </div>
-          </div>
-        ))}
-
-        {locations.length === 0 && (
-          <div className="text-center py-4 text-gray-400 text-sm">
-            Noch keine Orte vorhanden
-          </div>
-        )}
-      </div>
-
-      {/* Expenses by Location */}
-      {expenses.length > 0 && (
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <h3 className="font-bold text-gray-800 mb-3">💰 Kosten</h3>
-          
-          {Object.entries(getExpensesByLocation()).map(([name, amount]) => (
-            <div key={name} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl mb-2">
-              <span className="text-sm text-gray-700">{name}</span>
-              <span className="font-bold text-[#667eea]">€{amount.toFixed(2)}</span>
-            </div>
-          ))}
-
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="flex justify-between items-center">
-              <span className="font-bold text-gray-800">Gesamt:</span>
-              <span className="font-bold text-xl text-[#667eea]">
-                €{getTotalExpenses().toFixed(2)}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Location Modal */}
-      {showAddLocationModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-xl font-bold text-gray-800">📍 Neuer Ort</h3>
-              <button
-                onClick={() => setShowAddLocationModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Name
-                </label>
-                <input
-                  type="text"
-                  value={newLocation.name}
-                  onChange={(e) => setNewLocation({...newLocation, name: e.target.value})}
-                  placeholder="z.B. Sagrada Familia"
-                  className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Adresse
-                </label>
-                <input
-                  type="text"
-                  value={newLocation.address}
-                  onChange={(e) => setNewLocation({...newLocation, address: e.target.value})}
-                  placeholder="z.B. Carrer de Mallorca, 401, Barcelona"
-                  className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Typ
-                </label>
-                <select
-                  value={newLocation.type}
-                  onChange={(e) => setNewLocation({...newLocation, type: e.target.value as any})}
-                  className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-                >
-                  <option value="accommodation">🏨 Unterkunft</option>
-                  <option value="restaurant">🍽️ Restaurant</option>
-                  <option value="activity">🎫 Aktivität</option>
-                  <option value="transport">✈️ Transport</option>
-                  <option value="other">📍 Sonstiges</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Notizen (optional)
-                </label>
-                <textarea
-                  value={newLocation.notes}
-                  onChange={(e) => setNewLocation({...newLocation, notes: e.target.value})}
-                  placeholder="z.B. Tickets online buchen!"
-                  rows={3}
-                  className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-                />
-              </div>
-
-              <button
-                onClick={addLocation}
-                disabled={!newLocation.name || !newLocation.address}
-                className="w-full bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50"
-              >
-                ✨ Ort hinzufügen
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Geocoding Helper (bereits in supabase-v2 enthalten)
-async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-  try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`
-    )
-    const data = await response.json()
+    const newSettlements: any[] = []
+    const people = Object.keys(balances)
     
-    if (data && data.length > 0) {
-      return {
-        lat: parseFloat(data[0].lat),
-        lng: parseFloat(data[0].lon)
+    for (let i = 0; i < people.length; i++) {
+      for (let j = i + 1; j < people.length; j++) {
+        const person1 = people[i]
+        const person2 = people[j]
+        const balance1 = balances[person1]
+        const balance2 = balances[person2]
+        
+        if (balance1 > 0 && balance2 < 0) {
+          const amount = Math.min(balance1, Math.abs(balance2))
+          newSettlements.push({ from: person2, to: person1, amount })
+          balances[person1] -= amount
+          balances[person2] += amount
+        } else if (balance1 < 0 && balance2 > 0) {
+          const amount = Math.min(Math.abs(balance1), balance2)
+          newSettlements.push({ from: person1, to: person2, amount })
+          balances[person1] += amount
+          balances[person2] -= amount
+        }
       }
     }
-    return null
-  } catch (error) {
-    console.error('Geocoding error:', error)
-    return null
+
+    setSettlements(newSettlements)
   }
-}
-// =====================================================
-// REISEN-VERWALTUNG KOMPONENTE
-// Füge diese Funktion zu deiner page.tsx hinzu
-// =====================================================
 
-function renderTripsManagement() {
-  const [allTrips, setAllTrips] = useState<TripWithMembers[]>([])
-  const [showNewTripModal, setShowNewTripModal] = useState(false)
-  const [newTripData, setNewTripData] = useState({
-    name: '',
-    destination: '',
-    flag: '🌍',
-    start_date: '',
-    end_date: '',
-    budget: 0,
-    currency: 'EUR'
-  })
-
-  useEffect(() => {
-    loadAllTrips()
-  }, [])
-
-  const loadAllTrips = async () => {
-    try {
-      // Load all trips for current user
-      const { data, error } = await supabase
-        .from('trip_members')
-        .select(`
-          *,
-          trip:trips(*),
-          members:trip_members(
-            *,
-            user:users(*)
-          )
-        `)
-        .eq('user_id', currentUser.id)
-      
-      if (error) throw error
-      
-      const tripsWithMembers = data.map(item => ({
-        ...item.trip,
-        members: item.members,
-        member_count: item.members.length,
-        user_role: item.role
-      }))
-      
-      setAllTrips(tripsWithMembers)
-    } catch (error) {
-      console.error('Error loading trips:', error)
+  const getExpenseIcon = (category: string) => {
+    const icons: { [key: string]: string } = {
+      'Unterkunft': '🏨',
+      'Transport': '✈️',
+      'Essen': '🍽️',
+      'Aktivitäten': '🎭',
+      'Shopping': '🛍️',
+      'Sonstiges': '💰'
     }
+    return icons[category] || '💰'
   }
 
-  const createNewTrip = async () => {
-    try {
-      // Create trip
-      const { data: tripData, error: tripError } = await supabase
-        .from('trips')
-        .insert({
-          ...newTripData,
-          status: 'active',
-          created_by: currentUser.id
-        })
-        .select()
-        .single()
-
-      if (tripError) throw tripError
-
-      // Add current user as owner
-      const { error: memberError } = await supabase
-        .from('trip_members')
-        .insert({
-          trip_id: tripData.id,
-          user_id: currentUser.id,
-          role: 'owner'
-        })
-
-      if (memberError) throw memberError
-
-      // Reset form and reload
-      setShowNewTripModal(false)
-      setNewTripData({
-        name: '',
-        destination: '',
-        flag: '🌍',
-        start_date: '',
-        end_date: '',
-        budget: 0,
-        currency: 'EUR'
-      })
-      loadAllTrips()
-      
-      alert('✅ Neue Reise erstellt!')
-    } catch (error) {
-      console.error('Error creating trip:', error)
-      alert('❌ Fehler beim Erstellen der Reise')
+  const getActivityTypeIcon = (type: string) => {
+    const icons: { [key: string]: string } = {
+      'Check-in': '🏨',
+      'Check-out': '🚪',
+      'Aktivität': '🎯',
+      'Sehenswürdigkeit': '🏛️',
+      'Restaurant': '🍽️',
+      'Transport': '🚗',
+      'Freizeit': '🎉'
     }
+    return icons[type] || '📍'
   }
 
-  const switchToTrip = (trip: Trip) => {
-    setCurrentTrip(trip)
-    setActiveTab('overview')
-    alert(`Gewechselt zu: ${trip.name}`)
-  }
+  // ========== RENDER FUNCTIONS ==========
 
-  return (
-    <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="text-xl font-bold text-gray-800">Meine Reisen</h2>
-        <button 
-  className="bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white px-6 py-3 rounded-full font-semibold hover:shadow-lg transition-all"
-  onClick={() => setShowNewTripModal(true)}
->
-  ➕ Neue Reise erstellen
-</button>
-      </div>
-
-      {/* Active Trips */}
-      <div className="mb-6">
-        <h3 className="text-lg font-bold text-gray-700 mb-3">🌍 Aktive Reisen</h3>
-        {allTrips.filter(t => t.status === 'active').map(trip => (
-          <div
-            key={trip.id}
-            onClick={() => switchToTrip(trip)}
-            className="bg-white rounded-2xl p-4 mb-3 shadow-sm cursor-pointer hover:shadow-md transition-all"
+  const renderOverview = () => {
+    if (!currentTrip) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="text-6xl mb-6">🌍</div>
+          <h2 className="text-2xl font-bold mb-4">Willkommen bei TravelTracker Pro!</h2>
+          <p className="text-gray-600 mb-8">Du hast noch keine aktive Reise. Erstelle deine erste Reise, um loszulegen!</p>
+          <button 
+            onClick={() => setShowNewTripModal(true)}
+            className="bg-teal-600 text-white px-8 py-3 rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-2"
           >
+            ✈️ Neue Reise erstellen
+          </button>
+        </div>
+      )
+    }
+
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0)
+    const daysSinceStart = currentTrip.start_date 
+      ? Math.floor((new Date().getTime() - new Date(currentTrip.start_date).getTime()) / (1000 * 60 * 60 * 24))
+      : 0
+
+    return (
+      <div className="space-y-6">
+        <div className="bg-gradient-to-r from-teal-600 to-teal-500 text-white p-8 rounded-xl">
+          <div className="flex items-center gap-4 mb-4">
+            <span className="text-5xl">{currentTrip.flag}</span>
+            <div>
+              <h2 className="text-3xl font-bold">{currentTrip.name}</h2>
+              <p className="text-teal-100">{currentTrip.destination}</p>
+            </div>
+          </div>
+          <div className="flex gap-8 mt-6">
+            <div>
+              <div className="text-teal-100 text-sm">Start</div>
+              <div className="text-xl font-semibold">{new Date(currentTrip.start_date).toLocaleDateString('de-DE')}</div>
+            </div>
+            <div>
+              <div className="text-teal-100 text-sm">Ende</div>
+              <div className="text-xl font-semibold">{new Date(currentTrip.end_date).toLocaleDateString('de-DE')}</div>
+            </div>
+            <div>
+              <div className="text-teal-100 text-sm">Tage</div>
+              <div className="text-xl font-semibold">{Math.ceil((new Date(currentTrip.end_date).getTime() - new Date(currentTrip.start_date).getTime()) / (1000 * 60 * 60 * 24))}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-xl border border-gray-200">
             <div className="flex items-center gap-3 mb-2">
-              <span className="text-3xl">{trip.flag}</span>
-              <div className="flex-1">
-                <div className="font-bold text-gray-800">{trip.name}</div>
-                <div className="text-sm text-gray-500">{trip.destination}</div>
-              </div>
-              {trip.id === currentTrip?.id && (
-                <span className="bg-green-100 text-green-800 text-xs px-3 py-1 rounded-full font-semibold">
-                  Aktiv
-                </span>
-              )}
+              <span className="text-3xl">💰</span>
+              <h3 className="text-lg font-semibold text-gray-900">Ausgaben</h3>
             </div>
-
-            <div className="flex items-center gap-4 text-xs text-gray-600">
-              <span>📅 {new Date(trip.start_date).toLocaleDateString('de-DE')}</span>
-              <span>→</span>
-              <span>{new Date(trip.end_date).toLocaleDateString('de-DE')}</span>
-              <span className="ml-auto">👥 {trip.member_count} Personen</span>
-            </div>
-
-            {/* Members */}
-            {trip.members && trip.members.length > 0 && (
-              <div className="mt-3 pt-3 border-t border-gray-100">
-                <div className="flex flex-wrap gap-2">
-                  {trip.members.map(member => (
-                    <div
-                      key={member.id}
-                      className="flex items-center gap-2 bg-gray-50 px-3 py-1 rounded-full text-xs"
-                    >
-                      <span>👤</span>
-                      <span>{member.user?.name}</span>
-                      {member.role === 'owner' && (
-                        <span className="text-yellow-600">👑</span>
-                      )}
-                      {member.role === 'admin' && (
-                        <span className="text-blue-600">⭐</span>
-                      )}
-                    </div>
-                  ))}
+            <div className="text-3xl font-bold text-teal-600">{totalExpenses.toFixed(2)} {currentTrip.currency}</div>
+            <div className="text-sm text-gray-500 mt-1">{expenses.length} Transaktionen</div>
+            {currentTrip.budget > 0 && (
+              <div className="mt-3">
+                <div className="flex justify-between text-sm mb-1">
+                  <span>Budget</span>
+                  <span>{((totalExpenses / currentTrip.budget) * 100).toFixed(0)}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className={`h-2 rounded-full ${totalExpenses > currentTrip.budget ? 'bg-red-500' : 'bg-teal-600'}`}
+                    style={{ width: `${Math.min((totalExpenses / currentTrip.budget) * 100, 100)}%` }}
+                  />
                 </div>
               </div>
             )}
           </div>
-        ))}
 
-        {allTrips.filter(t => t.status === 'active').length === 0 && (
-          <div className="text-center py-8 text-gray-400">
-            <div className="text-4xl mb-2">✈️</div>
-            <div className="text-sm">Noch keine aktiven Reisen</div>
+          <div className="bg-white p-6 rounded-xl border border-gray-200">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-3xl">🗓️</span>
+              <h3 className="text-lg font-semibold text-gray-900">Reiseplan</h3>
+            </div>
+            <div className="text-3xl font-bold text-teal-600">{itineraryItems.length}</div>
+            <div className="text-sm text-gray-500 mt-1">Geplante Aktivitäten</div>
+          </div>
+
+          <div className="bg-white p-6 rounded-xl border border-gray-200">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-3xl">🎒</span>
+              <h3 className="text-lg font-semibold text-gray-900">Packliste</h3>
+            </div>
+            <div className="text-3xl font-bold text-teal-600">
+              {packingLists.filter(p => p.packed).length}/{packingLists.length}
+            </div>
+            <div className="text-sm text-gray-500 mt-1">Eingepackt</div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl border border-gray-200">
+          <h3 className="text-xl font-bold mb-4">👥 Reisende</h3>
+          <div className="flex flex-wrap gap-3">
+            {tripMembers.map(member => (
+              <div key={member.id} className="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-lg">
+                <span className="text-2xl">👤</span>
+                <div>
+                  <div className="font-semibold">{member.user?.name || 'Unbekannt'}</div>
+                  <div className="text-xs text-gray-500">{member.role}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderTripsManagement = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold">🌍 Meine Reisen</h2>
+          <button 
+            onClick={() => setShowNewTripModal(true)}
+            className="bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors"
+          >
+            ✈️ Neue Reise
+          </button>
+        </div>
+
+        {allUserTrips.length === 0 ? (
+          <div className="bg-white p-12 rounded-xl border border-gray-200 text-center">
+            <div className="text-6xl mb-4">🌍</div>
+            <h3 className="text-xl font-bold mb-2">Keine Reisen gefunden</h3>
+            <p className="text-gray-600 mb-6">Erstelle deine erste Reise, um loszulegen!</p>
+            <button 
+              onClick={() => setShowNewTripModal(true)}
+              className="bg-teal-600 text-white px-8 py-3 rounded-lg hover:bg-teal-700 transition-colors"
+            >
+              ✈️ Neue Reise erstellen
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {allUserTrips.map(trip => (
+              <div 
+                key={trip.id}
+                onClick={() => {
+                  setCurrentTrip(trip)
+                  loadTripData(trip.id)
+                  setActiveTab('overview')
+                }}
+                className={`bg-white p-6 rounded-xl border-2 cursor-pointer transition-all hover:shadow-lg ${
+                  currentTrip?.id === trip.id ? 'border-teal-600' : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-4xl">{trip.flag}</span>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-lg">{trip.name}</h3>
+                    <p className="text-sm text-gray-600">{trip.destination}</p>
+                  </div>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Start:</span>
+                    <span className="font-semibold">{new Date(trip.start_date).toLocaleDateString('de-DE')}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Ende:</span>
+                    <span className="font-semibold">{new Date(trip.end_date).toLocaleDateString('de-DE')}</span>
+                  </div>
+                  {trip.budget > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Budget:</span>
+                      <span className="font-semibold">{trip.budget} {trip.currency}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Mitglieder:</span>
+                    <span className="font-semibold">{trip.member_count || tripMembers.length} 👥</span>
+                  </div>
+                </div>
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <span className={`text-xs px-3 py-1 rounded-full ${
+                    trip.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                  }`}>
+                    {trip.status === 'active' ? '✅ Aktiv' : '📁 Archiviert'}
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
+    )
+  }
 
-      {/* Archived Trips */}
-      {allTrips.filter(t => t.status === 'archived').length > 0 && (
-        <div>
-          <h3 className="text-lg font-bold text-gray-700 mb-3">📦 Archiviert</h3>
-          {allTrips.filter(t => t.status === 'archived').map(trip => (
-            <div
-              key={trip.id}
-              className="bg-gray-50 rounded-2xl p-4 mb-3 opacity-70"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{trip.flag}</span>
-                <div className="flex-1">
-                  <div className="font-semibold text-gray-700">{trip.name}</div>
-                  <div className="text-xs text-gray-500">{trip.destination}</div>
-                </div>
-              </div>
+  const renderExpenses = () => {
+    const categoryTotals = expenses.reduce((acc, expense) => {
+      acc[expense.category] = (acc[expense.category] || 0) + expense.amount
+      return acc
+    }, {} as { [key: string]: number })
+
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold">💰 Ausgaben</h2>
+          <button 
+            onClick={() => setShowAddExpenseModal(true)}
+            className="bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors"
+          >
+            + Neue Ausgabe
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          {Object.entries(categoryTotals).map(([category, total]) => (
+            <div key={category} className="bg-white p-4 rounded-xl border border-gray-200">
+              <div className="text-2xl mb-2">{getExpenseIcon(category)}</div>
+              <div className="text-sm text-gray-600">{category}</div>
+              <div className="text-xl font-bold text-teal-600">{total.toFixed(2)} {currentTrip?.currency || 'EUR'}</div>
             </div>
           ))}
         </div>
-      )}
 
-      {/* New Trip Modal */}
-      {showNewTripModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="text-xl font-bold text-gray-800">✈️ Neue Reise</h3>
-              <button
-                onClick={() => setShowNewTripModal(false)}
-                className="text-gray-400 hover:text-gray-600 text-2xl"
-              >
-                ×
-              </button>
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Datum</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Beschreibung</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kategorie</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Bezahlt von</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Betrag</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {expenses.map(expense => (
+                <tr key={expense.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">{new Date(expense.date).toLocaleDateString('de-DE')}</td>
+                  <td className="px-6 py-4 text-sm font-medium">{expense.description}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <span className="flex items-center gap-2">
+                      {getExpenseIcon(expense.category)} {expense.category}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">{expense.paid_by}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-teal-600">
+                    {expense.amount.toFixed(2)} {currentTrip?.currency || 'EUR'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )
+  }
+
+  const renderItinerary = () => {
+    const days = [...new Set(itineraryItems.map(item => item.day))].sort((a, b) => a - b)
+
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold">🗓️ Reiseplan</h2>
+          <button 
+            onClick={() => setShowAddActivityModal(true)}
+            className="bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors"
+          >
+            + Neue Aktivität
+          </button>
+        </div>
+
+        {days.map(day => (
+          <div key={day} className="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 className="text-xl font-bold mb-4">Tag {day}</h3>
+            <div className="space-y-3">
+              {itineraryItems
+                .filter(item => item.day === day)
+                .sort((a, b) => a.time.localeCompare(b.time))
+                .map(item => (
+                  <div key={item.id} className="flex gap-4 p-4 bg-gray-50 rounded-lg">
+                    <div className="text-2xl">{getActivityTypeIcon(item.type)}</div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-1">
+                        <span className="font-mono text-sm text-gray-600">{item.time}</span>
+                        <h4 className="font-semibold">{item.title}</h4>
+                      </div>
+                      {item.details && <p className="text-sm text-gray-600">{item.details}</p>}
+                    </div>
+                  </div>
+                ))}
             </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🏨 Reisename
-                </label>
-                <input
-                  type="text"
-                  value={newTripData.name}
-                  onChange={(e) => setNewTripData({...newTripData, name: e.target.value})}
-                  placeholder="z.B. Sommer in Italien"
-                  className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-                />
-              </div>
+  const renderPacking = () => {
+    const categories = [...new Set(packingLists.map(item => item.category))]
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  📍 Reiseziel
-                </label>
-                <input
-                  type="text"
-                  value={newTripData.destination}
-                  onChange={(e) => setNewTripData({...newTripData, destination: e.target.value})}
-                  placeholder="z.B. Rom, Italien"
-                  className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-                />
-              </div>
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold">🎒 Packliste</h2>
+          <div className="text-teal-600 font-semibold">
+            {packingLists.filter(p => p.packed).length} / {packingLists.length} eingepackt
+          </div>
+        </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  🏳️ Flagge
-                </label>
-                <select
-                  value={newTripData.flag}
-                  onChange={(e) => setNewTripData({...newTripData, flag: e.target.value})}
-                  className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-                >
-                  <option value="🇪🇸">🇪🇸 Spanien</option>
-                  <option value="🇫🇷">🇫🇷 Frankreich</option>
-                  <option value="🇮🇹">🇮🇹 Italien</option>
-                  <option value="🇬🇷">🇬🇷 Griechenland</option>
-                  <option value="🇵🇹">🇵🇹 Portugal</option>
-                  <option value="🇩🇪">🇩🇪 Deutschland</option>
-                  <option value="🇦🇹">🇦🇹 Österreich</option>
-                  <option value="🇨🇭">🇨🇭 Schweiz</option>
-                  <option value="🇳🇱">🇳🇱 Niederlande</option>
-                  <option value="🇧🇪">🇧🇪 Belgien</option>
-                  <option value="🇬🇧">🇬🇧 Großbritannien</option>
-                  <option value="🇺🇸">🇺🇸 USA</option>
-                  <option value="🇯🇵">🇯🇵 Japan</option>
-                  <option value="🇹🇭">🇹🇭 Thailand</option>
-                  <option value="🌍">🌍 Andere</option>
-                </select>
-              </div>
+        {categories.map(category => (
+          <div key={category} className="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 className="text-lg font-bold mb-4">{category}</h3>
+            <div className="space-y-2">
+              {packingLists
+                .filter(item => item.category === category)
+                .map(item => (
+                  <div key={item.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    <input 
+                      type="checkbox" 
+                      checked={item.packed}
+                      onChange={() => {
+                        setPackingLists(packingLists.map(p => 
+                          p.id === item.id ? { ...p, packed: !p.packed } : p
+                        ))
+                      }}
+                      className="w-5 h-5 text-teal-600"
+                    />
+                    <span className={item.packed ? 'line-through text-gray-400' : ''}>{item.item}</span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    📅 Start
-                  </label>
-                  <input
-                    type="date"
-                    value={newTripData.start_date}
-                    onChange={(e) => setNewTripData({...newTripData, start_date: e.target.value})}
-                    className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-                  />
+  const renderMapView = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold">🗺️ Karte</h2>
+          <button 
+            onClick={() => setShowAddLocationModal(true)}
+            className="bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors"
+          >
+            📍 Neuer Ort
+          </button>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+          <div className="text-6xl mb-4">🗺️</div>
+          <h3 className="text-xl font-bold mb-2">Karte wird geladen...</h3>
+          <p className="text-gray-600 mb-6">
+            Installiere die Leaflet-Pakete, um die interaktive Karte zu nutzen:
+          </p>
+          <code className="bg-gray-100 px-4 py-2 rounded text-sm">
+            npm install leaflet react-leaflet @types/leaflet
+          </code>
+          <div className="mt-6 text-left">
+            <h4 className="font-semibold mb-2">Gespeicherte Orte ({locations.length}):</h4>
+            <div className="space-y-2">
+              {locations.map(loc => (
+                <div key={loc.id} className="p-3 bg-gray-50 rounded-lg">
+                  <div className="font-semibold">{loc.name}</div>
+                  <div className="text-sm text-gray-600">{loc.address}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {loc.latitude}, {loc.longitude} • {loc.type}
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    📅 Ende
-                  </label>
-                  <input
-                    type="date"
-                    value={newTripData.end_date}
-                    onChange={(e) => setNewTripData({...newTripData, end_date: e.target.value})}
-                    className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    💰 Budget
-                  </label>
-                  <input
-                    type="number"
-                    value={newTripData.budget}
-                    onChange={(e) => setNewTripData({...newTripData, budget: parseFloat(e.target.value)})}
-                    placeholder="0"
-                    className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    💵 Währung
-                  </label>
-                  <select
-                    value={newTripData.currency}
-                    onChange={(e) => setNewTripData({...newTripData, currency: e.target.value})}
-                    className="w-full p-3 border-2 border-gray-200 rounded-xl text-sm"
-                  >
-                    <option value="EUR">EUR (€)</option>
-                    <option value="USD">USD ($)</option>
-                    <option value="GBP">GBP (£)</option>
-                    <option value="CHF">CHF (Fr)</option>
-                  </select>
-                </div>
-              </div>
-
-              <button
-                onClick={createNewTrip}
-                disabled={!newTripData.name || !newTripData.destination || !newTripData.start_date || !newTripData.end_date}
-                className="w-full bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                ✨ Reise erstellen
-              </button>
+              ))}
             </div>
           </div>
         </div>
-      )}
+      </div>
+    )
+  }
+
+  const renderFriendsAndInvitations = () => {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold">👥 Team & Einladungen</h2>
+          <button 
+            onClick={() => setShowInviteModal(true)}
+            className="bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors"
+          >
+            ✉️ Freund einladen
+          </button>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h3 className="text-lg font-bold mb-4">Aktuelle Mitglieder</h3>
+          <div className="space-y-3">
+            {tripMembers.map(member => (
+              <div key={member.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">👤</span>
+                  <div>
+                    <div className="font-semibold">{member.user?.name || 'Unbekannt'}</div>
+                    <div className="text-sm text-gray-600">{member.user?.email || 'Keine E-Mail'}</div>
+                  </div>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-sm ${
+                  member.role === 'owner' ? 'bg-purple-100 text-purple-700' :
+                  member.role === 'admin' ? 'bg-blue-100 text-blue-700' :
+                  'bg-gray-100 text-gray-700'
+                }`}>
+                  {member.role === 'owner' ? '👑 Owner' :
+                   member.role === 'admin' ? '⭐ Admin' : '👤 Member'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {invitations.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 className="text-lg font-bold mb-4">Offene Einladungen</h3>
+            <div className="space-y-3">
+              {invitations.map(inv => (
+                <div key={inv.id} className="flex items-center justify-between p-4 bg-yellow-50 rounded-lg">
+                  <div>
+                    <div className="font-semibold">{inv.invited_email}</div>
+                    <div className="text-sm text-gray-600">
+                      Läuft ab: {new Date(inv.expires_at).toLocaleDateString('de-DE')}
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full text-sm">
+                    ⏳ Ausstehend
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderSettlement = () => {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold">💳 Abrechnung</h2>
+
+        {settlements.length === 0 ? (
+          <div className="bg-white p-12 rounded-xl border border-gray-200 text-center">
+            <div className="text-6xl mb-4">✅</div>
+            <h3 className="text-xl font-bold mb-2">Alles ausgeglichen!</h3>
+            <p className="text-gray-600">Es gibt keine offenen Beträge.</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 className="text-lg font-bold mb-4">Offene Zahlungen</h3>
+            <div className="space-y-3">
+              {settlements.map((settlement, index) => (
+                <div key={index} className="flex items-center justify-between p-4 bg-orange-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">💸</span>
+                    <div>
+                      <div className="font-semibold">
+                        {settlement.from} → {settlement.to}
+                      </div>
+                      <div className="text-sm text-gray-600">Offener Betrag</div>
+                    </div>
+                  </div>
+                  <div className="text-xl font-bold text-orange-600">
+                    {settlement.amount.toFixed(2)} {currentTrip?.currency || 'EUR'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderAdmin = () => {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold">⚙️ Admin</h2>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h3 className="text-lg font-bold mb-4">Reise-Einstellungen</h3>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Reisename</label>
+              <input 
+                type="text" 
+                value={currentTrip?.name || ''}
+                onChange={(e) => setCurrentTrip({...currentTrip, name: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Budget ({currentTrip?.currency || 'EUR'})</label>
+              <input 
+                type="number" 
+                value={currentTrip?.budget || 0}
+                onChange={(e) => setCurrentTrip({...currentTrip, budget: parseFloat(e.target.value)})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <button className="bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors">
+              💾 Speichern
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h3 className="text-lg font-bold mb-4 text-red-600">Gefahrenzone</h3>
+          <button className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors">
+            🗑️ Reise löschen
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ========== MODALS ==========
+
+  const renderNewTripModal = () => {
+    if (!showNewTripModal) return null
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl p-8 max-w-md w-full">
+          <h2 className="text-2xl font-bold mb-6">✈️ Neue Reise erstellen</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Reisename *</label>
+              <input 
+                type="text"
+                placeholder="z.B. Barcelona Städtetrip"
+                value={newTripData.name}
+                onChange={(e) => setNewTripData({...newTripData, name: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Ziel *</label>
+              <input 
+                type="text"
+                placeholder="z.B. Barcelona, Spanien"
+                value={newTripData.destination}
+                onChange={(e) => setNewTripData({...newTripData, destination: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Emoji/Flagge</label>
+              <input 
+                type="text"
+                placeholder="🌍"
+                value={newTripData.flag}
+                onChange={(e) => setNewTripData({...newTripData, flag: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Start</label>
+                <input 
+                  type="date"
+                  value={newTripData.start_date}
+                  onChange={(e) => setNewTripData({...newTripData, start_date: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Ende</label>
+                <input 
+                  type="date"
+                  value={newTripData.end_date}
+                  onChange={(e) => setNewTripData({...newTripData, end_date: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Budget (optional)</label>
+                <input 
+                  type="number"
+                  placeholder="0"
+                  value={newTripData.budget}
+                  onChange={(e) => setNewTripData({...newTripData, budget: parseFloat(e.target.value) || 0})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Währung</label>
+                <select 
+                  value={newTripData.currency}
+                  onChange={(e) => setNewTripData({...newTripData, currency: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                >
+                  <option value="EUR">EUR</option>
+                  <option value="USD">USD</option>
+                  <option value="GBP">GBP</option>
+                  <option value="CHF">CHF</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button 
+              onClick={() => setShowNewTripModal(false)}
+              className="flex-1 px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Abbrechen
+            </button>
+            <button 
+              onClick={createNewTrip}
+              className="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors"
+            >
+              Erstellen
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderAddExpenseModal = () => {
+    if (!showAddExpenseModal) return null
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl p-8 max-w-md w-full">
+          <h2 className="text-2xl font-bold mb-6">💰 Neue Ausgabe</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Kategorie</label>
+              <select 
+                value={newExpense.category}
+                onChange={(e) => setNewExpense({...newExpense, category: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              >
+                <option value="Unterkunft">🏨 Unterkunft</option>
+                <option value="Transport">✈️ Transport</option>
+                <option value="Essen">🍽️ Essen</option>
+                <option value="Aktivitäten">🎭 Aktivitäten</option>
+                <option value="Shopping">🛍️ Shopping</option>
+                <option value="Sonstiges">💰 Sonstiges</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Beschreibung *</label>
+              <input 
+                type="text"
+                placeholder="z.B. Hotel Barcelona"
+                value={newExpense.description}
+                onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Betrag * ({currentTrip?.currency || 'EUR'})</label>
+              <input 
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={newExpense.amount}
+                onChange={(e) => setNewExpense({...newExpense, amount: parseFloat(e.target.value) || 0})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Bezahlt von</label>
+              <select 
+                value={newExpense.paid_by}
+                onChange={(e) => setNewExpense({...newExpense, paid_by: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              >
+                {tripMembers.map(member => (
+                  <option key={member.id} value={member.user?.name}>
+                    {member.user?.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button 
+              onClick={() => setShowAddExpenseModal(false)}
+              className="flex-1 px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Abbrechen
+            </button>
+            <button 
+              onClick={createExpense}
+              className="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors"
+            >
+              Hinzufügen
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderAddActivityModal = () => {
+    if (!showAddActivityModal) return null
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl p-8 max-w-md w-full">
+          <h2 className="text-2xl font-bold mb-6">🗓️ Neue Aktivität</h2>
+          
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tag</label>
+                <input 
+                  type="number"
+                  min="1"
+                  value={newActivity.day}
+                  onChange={(e) => setNewActivity({...newActivity, day: parseInt(e.target.value) || 1})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Uhrzeit</label>
+                <input 
+                  type="time"
+                  value={newActivity.time}
+                  onChange={(e) => setNewActivity({...newActivity, time: e.target.value})}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Typ</label>
+              <select 
+                value={newActivity.type}
+                onChange={(e) => setNewActivity({...newActivity, type: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              >
+                <option value="Aktivität">🎯 Aktivität</option>
+                <option value="Sehenswürdigkeit">🏛️ Sehenswürdigkeit</option>
+                <option value="Restaurant">🍽️ Restaurant</option>
+                <option value="Transport">🚗 Transport</option>
+                <option value="Check-in">🏨 Check-in</option>
+                <option value="Check-out">🚪 Check-out</option>
+                <option value="Freizeit">🎉 Freizeit</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Titel *</label>
+              <input 
+                type="text"
+                placeholder="z.B. Sagrada Familia"
+                value={newActivity.title}
+                onChange={(e) => setNewActivity({...newActivity, title: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Details</label>
+              <textarea 
+                placeholder="Zusätzliche Informationen..."
+                value={newActivity.details}
+                onChange={(e) => setNewActivity({...newActivity, details: e.target.value})}
+                rows={3}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button 
+              onClick={() => setShowAddActivityModal(false)}
+              className="flex-1 px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Abbrechen
+            </button>
+            <button 
+              onClick={createActivity}
+              className="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors"
+            >
+              Hinzufügen
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderInviteModal = () => {
+    if (!showInviteModal) return null
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl p-8 max-w-md w-full">
+          <h2 className="text-2xl font-bold mb-6">✉️ Freund einladen</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">E-Mail-Adresse *</label>
+              <input 
+                type="email"
+                placeholder="freund@example.com"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800">
+                📧 Es wird ein Einladungslink erstellt, den du per E-Mail versenden kannst.
+                Der Link ist 7 Tage gültig.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button 
+              onClick={() => {
+                setShowInviteModal(false)
+                setInviteEmail('')
+              }}
+              className="flex-1 px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Abbrechen
+            </button>
+            <button 
+              onClick={sendInvitation}
+              className="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors"
+            >
+              Einladen
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderAddLocationModal = () => {
+    if (!showAddLocationModal) return null
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl p-8 max-w-md w-full">
+          <h2 className="text-2xl font-bold mb-6">📍 Neuer Ort</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
+              <input 
+                type="text"
+                placeholder="z.B. Hotel Barcelona"
+                value={newLocation.name}
+                onChange={(e) => setNewLocation({...newLocation, name: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Adresse *</label>
+              <input 
+                type="text"
+                placeholder="Carrer de Balmes 132, Barcelona"
+                value={newLocation.address}
+                onChange={(e) => setNewLocation({...newLocation, address: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Typ</label>
+              <select 
+                value={newLocation.type}
+                onChange={(e) => setNewLocation({...newLocation, type: e.target.value as any})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              >
+                <option value="hotel">🏨 Hotel</option>
+                <option value="restaurant">🍽️ Restaurant</option>
+                <option value="activity">🎯 Aktivität</option>
+                <option value="transport">🚗 Transport</option>
+                <option value="other">📍 Sonstiges</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Notizen</label>
+              <textarea 
+                placeholder="Zusätzliche Informationen..."
+                value={newLocation.notes}
+                onChange={(e) => setNewLocation({...newLocation, notes: e.target.value})}
+                rows={3}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button 
+              onClick={() => setShowAddLocationModal(false)}
+              className="flex-1 px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              Abbrechen
+            </button>
+            <button 
+              onClick={addLocation}
+              className="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 transition-colors"
+            >
+              Hinzufügen
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ========== MAIN RENDER ==========
+
+  function renderTabContent() {
+    switch (activeTab) {
+      case 'overview': return renderOverview()
+      case 'trips': return renderTripsManagement()
+      case 'expenses': return renderExpenses()
+      case 'itinerary': return renderItinerary()
+      case 'packing': return renderPacking()
+      case 'map': return renderMapView()
+      case 'friends': return renderFriendsAndInvitations()
+      case 'settlement': return renderSettlement()
+      case 'admin': return renderAdmin()
+      default: return null
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-green-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">✈️</span>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">TravelTracker Pro</h1>
+                <p className="text-sm text-gray-600">v2.0 - Multi-Trip Edition</p>
+              </div>
+            </div>
+            {currentTrip && (
+              <div className="hidden md:flex items-center gap-3 bg-teal-50 px-4 py-2 rounded-lg">
+                <span className="text-2xl">{currentTrip.flag}</span>
+                <div>
+                  <div className="font-semibold text-gray-900">{currentTrip.name}</div>
+                  <div className="text-sm text-gray-600">{currentTrip.destination}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Navigation */}
+      <nav className="bg-white border-b border-gray-200 sticky top-[73px] z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex overflow-x-auto scrollbar-hide">
+            {[
+              { id: 'overview', icon: '📊', label: 'Übersicht' },
+              { id: 'trips', icon: '🌍', label: 'Reisen' },
+              { id: 'expenses', icon: '💰', label: 'Ausgaben' },
+              { id: 'itinerary', icon: '🗓️', label: 'Plan' },
+              { id: 'packing', icon: '🎒', label: 'Packliste' },
+              { id: 'map', icon: '🗺️', label: 'Karte' },
+              { id: 'friends', icon: '👥', label: 'Team' },
+              { id: 'settlement', icon: '💳', label: 'Abrechnung' },
+              { id: 'admin', icon: '⚙️', label: 'Admin' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-6 py-4 whitespace-nowrap border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-teal-600 text-teal-600 font-semibold'
+                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                }`}
+              >
+                <span className="text-xl">{tab.icon}</span>
+                <span className="hidden sm:inline">{tab.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {renderTabContent()}
+      </main>
+
+      {/* Modals */}
+      {renderNewTripModal()}
+      {renderAddExpenseModal()}
+      {renderAddActivityModal()}
+      {renderInviteModal()}
+      {renderAddLocationModal()}
     </div>
   )
-}
 }
