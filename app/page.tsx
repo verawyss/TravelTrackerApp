@@ -670,7 +670,7 @@ export default function TravelTracker() {
             <div key={category} className="bg-white p-4 rounded-xl border border-gray-200">
               <div className="text-2xl mb-2">{getExpenseIcon(category)}</div>
               <div className="text-sm text-gray-600">{category}</div>
-              <div className="text-xl font-bold text-teal-600">{total.toFixed(2)} {currentTrip?.currency || 'EUR'}</div>
+              <div className="text-xl font-bold text-teal-600">{(total as number).toFixed(2)} {currentTrip?.currency || 'EUR'}</div>
             </div>
           ))}
         </div>
