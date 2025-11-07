@@ -5,8 +5,22 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+// ✅ SICHERE ENV VAR PRÜFUNG
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+if (!supabaseUrl) {
+  throw new Error('❌ FEHLER: NEXT_PUBLIC_SUPABASE_URL ist nicht gesetzt! Bitte in Vercel Environment Variables hinzufügen.')
+}
+
+if (!supabaseAnonKey) {
+  throw new Error('❌ FEHLER: NEXT_PUBLIC_SUPABASE_ANON_KEY ist nicht gesetzt! Bitte in Vercel Environment Variables hinzufügen.')
+}
+
+console.log('✅ Supabase Client wird initialisiert...')
+console.log('   URL:', supabaseUrl)
+console.log('   Key (first 20 chars):', supabaseAnonKey.substring(0, 20) + '...')
 
 // ✅ Standard Client für normale Operationen (mit RLS)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -17,16 +31,20 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 })
 
 // ✅ Service Role Client für Admin-Operationen (OHNE RLS) - NUR für Server-Side!
-export const supabaseAdmin = createClient(
-  supabaseUrl,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
+export const supabaseAdmin = supabaseServiceKey 
+  ? createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    })
+  : null
+
+if (!supabaseAdmin) {
+  console.warn('⚠️ WARNUNG: SUPABASE_SERVICE_ROLE_KEY nicht gesetzt - Admin-Funktionen nicht verfügbar')
+}
+
+console.log('✅ Supabase Clients erfolgreich initialisiert')
 
 // =====================================================
 // ERWEITERTE TYPESCRIPT TYPES
