@@ -1,0 +1,504 @@
+# 🎯 PROJEKT-BRIEFING: TravelTracker Pro
+
+> **Kopiere diesen Text in jeden neuen Chat mit Claude, damit er sofort weiß, woran wir arbeiten!**
+
+---
+
+## 📱 PROJEKT-ÜBERSICHT
+
+**Projektname:** TravelTracker Pro
+**Typ:** Next.js Web-Anwendung mit Supabase Backend
+**Zweck:** Reiseplanungs- und Ausgabenverwaltungs-App für Gruppen
+**Status:** ✅ Authentifizierung funktioniert, Basis-Setup komplett
+
+---
+
+## 🛠️ TECH STACK
+
+- **Framework:** Next.js 14+ (App Router)
+- **Sprache:** TypeScript
+- **Styling:** Tailwind CSS
+- **Datenbank:** Supabase (PostgreSQL)
+- **Authentifizierung:** Supabase Auth (Email/Passwort)
+- **Deployment:** Vercel
+- **Git:** GitHub
+
+---
+
+## 📂 PROJEKTSTRUKTUR
+
+```
+traveltracker-pro/
+├── app/
+│   ├── page.tsx                          # Hauptseite mit Auth & Dashboard
+│   ├── test/
+│   │   └── page.tsx                      # Env Test-Page (für Debugging)
+│   └── api/
+│       └── admin/
+│           └── create-user/
+│               └── route.ts              # API für Admin-User-Erstellung
+├── lib/
+│   └── supabase.ts                       # Supabase Client mit Env-Validierung
+├── .env.local                            # Environment Variables (NICHT auf GitHub!)
+├── .gitignore                            # .env.local MUSS drin sein!
+├── package.json
+├── PROJECT-BRIEFING.md                   # Diese Datei
+└── README.md
+```
+
+---
+
+## 🔐 SUPABASE KONFIGURATION
+
+### **Aktuelles Supabase Project:**
+- **Project ID:** `tpaczpfczbznmabtcpxe`
+- **Project URL:** `https://tpaczpfczbznmabtcpxe.supabase.co`
+- **Region:** Europe West
+- **Status:** ✅ Aktiv
+
+### **Admin User:**
+- **Email:** `wyssvera6@gmail.com`
+- **Password:** `Admin123!`
+- **Rolle:** `admin`
+- **UUID:** Wird bei Login automatisch gesetzt
+
+### **Environment Variables:**
+
+**Lokal (`.env.local`):**
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://tpaczpfczbznmabtcpxe.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwYWN6cGZjemJ6bm1hYnRjcHhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjI0ODA3NDcsImV4cCI6MjA3ODA1Njc0N30.lbbMfBAdtTAbtgJa_1qKd5hz7yNqHrlINiKneCJ_t8o
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwYWN6cGZjemJ6bm1hYnRjcHhlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MjQ4MDc0NywiZXhwIjoyMDc4MDU2NzQ3fQ.ztEtoku8W8EyjaOj71O9yhZiFS2GLCwozbPBzfmxeWg
+```
+
+**Vercel (Production):**
+- Gleiche Keys wie oben
+- Gesetzt für: Production ✅, Preview ✅, Development ✅
+
+⚠️ **WICHTIG:** `.env.local` NIEMALS auf GitHub committen!
+
+---
+
+## 🗄️ DATENBANK-SCHEMA (Supabase)
+
+### Tabellen:
+
+#### 1. **users**
+```sql
+- id: UUID (Primary Key, muss mit auth.users.id übereinstimmen!)
+- email: TEXT (UNIQUE)
+- name: TEXT
+- role: TEXT (Werte: 'admin', 'member')
+- created_at: TIMESTAMPTZ
+```
+
+#### 2. **trips**
+```sql
+- id: UUID (Primary Key)
+- name: TEXT
+- destination: TEXT
+- flag: TEXT (Emoji)
+- start_date: DATE
+- end_date: DATE
+- budget: NUMERIC
+- currency: TEXT
+- status: TEXT (Werte: 'active', 'archived')
+- created_by: UUID (Foreign Key zu users)
+- created_at: TIMESTAMPTZ
+```
+
+#### 3. **trip_members**
+```sql
+- id: UUID (Primary Key)
+- trip_id: UUID (Foreign Key zu trips)
+- user_id: UUID (Foreign Key zu users)
+- role: TEXT (Werte: 'owner', 'admin', 'member')
+- joined_at: TIMESTAMPTZ
+- UNIQUE(trip_id, user_id)
+```
+
+#### 4. **expenses**
+```sql
+- id: UUID (Primary Key)
+- trip_id: UUID (Foreign Key zu trips)
+- user_id: UUID (Foreign Key zu users)
+- category: TEXT
+- description: TEXT
+- amount: NUMERIC
+- paid_by: TEXT
+- split_between: TEXT[] (Array)
+- date: DATE
+- created_at: TIMESTAMPTZ
+```
+
+#### 5. **itinerary**
+```sql
+- id: UUID (Primary Key)
+- trip_id: UUID (Foreign Key zu trips)
+- day: INTEGER
+- time: TEXT
+- title: TEXT
+- details: TEXT
+- type: TEXT
+- created_at: TIMESTAMPTZ
+```
+
+#### 6. **locations**
+```sql
+- id: UUID (Primary Key)
+- trip_id: UUID (Foreign Key zu trips)
+- name: TEXT
+- address: TEXT
+- type: TEXT (Werte: 'hotel', 'restaurant', 'activity', 'transport', 'other')
+- notes: TEXT
+- created_at: TIMESTAMPTZ
+```
+
+---
+
+## 🔐 ROW LEVEL SECURITY (RLS)
+
+✅ RLS ist aktiviert für alle Tabellen!
+
+### **Wichtige Policies:**
+
+**users Tabelle:**
+- Jeder kann sein eigenes Profil lesen (auth.uid() = id)
+- Admins können alle User sehen
+- Jeder kann sein Profil updaten
+- Admins können User erstellen/löschen
+
+**trips Tabelle:**
+- User sehen nur Trips, bei denen sie Mitglied sind
+- User können Trips erstellen
+- Owner können Trip bearbeiten/löschen
+
+**Andere Tabellen:**
+- Zugriff nur für Trip-Mitglieder
+- Basierend auf trip_members Zugehörigkeit
+
+---
+
+## 🎯 IMPLEMENTIERTE FEATURES
+
+### ✅ **Authentifizierung**
+- Login/Logout mit Email/Passwort
+- Passwort zurücksetzen per Email
+- Session-Persistenz
+- Auth State Listener
+- RLS-geschützte Datenbank
+
+### ✅ **Admin-Panel**
+- Benutzer erstellen/löschen
+- Passwort-Reset-Links versenden
+- System-Übersicht (Statistiken)
+- User-Liste mit Rollen
+
+### ✅ **Multi-User Support**
+- User können mehreren Trips beitreten
+- Rollen-basierte Berechtigungen (owner, admin, member)
+- User-Tabelle sync mit auth.users
+
+### ✅ **Environment Variable Validierung**
+- Fehlerprüfung beim App-Start
+- Klare Fehlermeldungen wenn Keys fehlen
+- Console Logs zum Debugging
+
+---
+
+## 🚧 GEPLANTE FEATURES (Noch nicht implementiert)
+
+### 🌍 **Reiseverwaltung**
+- Trips erstellen/bearbeiten/löschen
+- Trip-Details anzeigen
+- Trip-Status verwalten
+- Cover-Bilder hochladen
+
+### 👥 **Team-Management**
+- Mitglieder zu Trips einladen (per Email)
+- Einladungen annehmen/ablehnen
+- Mitglieder-Rollen ändern
+- Mitglieder entfernen
+
+### 💰 **Ausgabenverwaltung**
+- Ausgaben erfassen
+- Kategorisierung
+- Split-Berechnungen (wer schuldet wem)
+- Abrechnungs-System
+- Quittungen/Belege hochladen
+
+### 🗓️ **Reiseplanung**
+- Tagesplan (Itinerary) erstellen
+- Aktivitäten hinzufügen
+- Zeitplan verwalten
+- Notizen zu Aktivitäten
+
+### 🎒 **Packliste**
+- Items zur Packliste hinzufügen
+- Kategorien (Kleidung, Elektronik, Dokumente)
+- Abhaken-Funktion
+- "Essential" Items markieren
+
+### 🗺️ **Karten-Integration**
+- Locations auf Karte anzeigen
+- Geocoding (Adresse → Koordinaten)
+- Route planen
+- Locations zu Aktivitäten verknüpfen
+
+---
+
+## 🔧 ENTWICKLUNGS-WORKFLOW
+
+### **Lokale Entwicklung:**
+
+```bash
+# Dependencies installieren
+npm install
+
+# Dev Server starten
+npm run dev
+
+# App öffnen: http://localhost:3000
+```
+
+### **Deployment zu Vercel:**
+
+```bash
+# Änderungen committen
+git add .
+git commit -m "Beschreibung der Änderung"
+
+# Zu GitHub pushen (triggert automatisch Vercel Deploy)
+git push origin main
+
+# Deploy dauert 1-2 Minuten
+# Check: Vercel Dashboard → Deployments
+```
+
+### **Env Vars ändern:**
+
+1. Vercel Dashboard → Settings → Environment Variables
+2. Variable bearbeiten
+3. Für ALLE Environments aktivieren (Production, Preview, Development)
+4. Redeploy triggern (Deployments → ... → Redeploy)
+
+---
+
+## 🐛 HÄUFIGE PROBLEME & LÖSUNGEN
+
+### **Problem: "supabaseKey is required" Fehler**
+
+**Ursache:** Environment Variables nicht in Vercel gesetzt oder alter Build-Cache
+
+**Lösung:**
+1. Vercel → Settings → Environment Variables prüfen
+2. Alle 3 Keys für ALLE Environments setzen
+3. Redeploy triggern
+4. Hard Refresh im Browser (CTRL+SHIFT+R)
+
+---
+
+### **Problem: "Database error granting user" beim Login**
+
+**Ursache:** User existiert in `auth.users` aber nicht in `users` Tabelle, oder UUIDs stimmen nicht überein
+
+**Lösung:**
+```sql
+-- 1. Prüfe ob IDs übereinstimmen
+SELECT 
+  auth.id as auth_id,
+  users.id as users_id,
+  auth.email
+FROM auth.users auth
+LEFT JOIN users ON users.id = auth.id
+WHERE auth.email = 'EMAIL@HIER.COM';
+
+-- 2. Wenn users_id NULL: User in users Tabelle anlegen
+INSERT INTO users (id, email, name, role)
+VALUES (
+  'UUID-VON-AUTH-USERS',
+  'EMAIL@HIER.COM',
+  'Name',
+  'admin'
+);
+```
+
+---
+
+### **Problem: Login funktioniert lokal aber nicht auf Vercel**
+
+**Ursache:** Environment Variables nur lokal in `.env.local`, aber nicht in Vercel gesetzt
+
+**Lösung:** Environment Variables auch in Vercel setzen (siehe oben)
+
+---
+
+### **Problem: Build schlägt fehl mit TypeScript Fehler**
+
+**Ursache:** Oft fehlende Return-Types oder Type-Errors
+
+**Lösung:**
+```bash
+# TypeScript prüfen
+npx tsc --noEmit
+
+# Fehler beheben, dann:
+git add .
+git commit -m "Fix TypeScript errors"
+git push
+```
+
+---
+
+### **Problem: ".env.local" auf GitHub committed**
+
+**KRITISCH!** Sofort handeln:
+
+1. **Service Key neu generieren** in Supabase Dashboard
+2. **Aus Git entfernen:**
+   ```bash
+   git rm --cached .env.local
+   echo ".env.local" >> .gitignore
+   git add .gitignore
+   git commit -m "Remove .env.local from git"
+   git push
+   ```
+3. **GitHub Security Alert schließen** (als "Revoked")
+4. **Neue Keys in Vercel setzen**
+
+---
+
+## 📝 WICHTIGE HINWEISE FÜR NEUE CHATS
+
+### **Wenn du Hilfe bei diesem Projekt brauchst, teile Claude:**
+
+1. **Diese PROJECT-BRIEFING.md Datei** (komplett kopieren)
+2. **Was du tun möchtest:**
+   - Welches Feature implementieren?
+   - Welches Problem lösen?
+3. **Relevante Dateien hochladen:**
+   - `app/page.tsx` (für UI-Änderungen)
+   - `lib/supabase.ts` (für Datenbankprobleme)
+   - Screenshots von Fehlermeldungen
+4. **Aktueller Kontext:**
+   - Lokal oder auf Vercel?
+   - Welche Fehlermeldung?
+   - Was hast du bereits versucht?
+
+### **Beispiel für einen guten Chat-Start:**
+
+```
+Ich arbeite an TravelTracker Pro.
+
+[Kopiere PROJECT-BRIEFING.md hier rein]
+
+Ich möchte: Die Trips-Verwaltung implementieren, sodass User neue Reisen erstellen können.
+
+Aktueller Stand: Authentifizierung funktioniert, Admin-Panel ist da.
+
+Frage: Wie erstelle ich das UI für "Neuen Trip anlegen"?
+```
+
+---
+
+## 🎯 NÄCHSTE SCHRITTE
+
+**Priorität 1: Trips-Verwaltung**
+- [ ] UI für "Neuen Trip erstellen"
+- [ ] Trip-Liste anzeigen
+- [ ] Trip auswählen
+- [ ] Trip-Details bearbeiten
+
+**Priorität 2: Team-Management**
+- [ ] Mitglieder per Email einladen
+- [ ] Einladungs-System
+- [ ] Mitglieder-Liste anzeigen
+
+**Priorität 3: Ausgaben**
+- [ ] Ausgaben erfassen
+- [ ] Split-Logik implementieren
+- [ ] Abrechnungs-Übersicht
+
+---
+
+## 🔗 WICHTIGE LINKS
+
+- **GitHub Repo:** https://github.com/verawyss/TravelTrackerApp
+- **Vercel Deploy:** https://travel-tracker-9kcnnugqp-veras-projects-6736a844.vercel.app/
+- **Supabase Dashboard:** https://supabase.com/dashboard/project/tpaczpfczbznmabtcpxe
+- **Env Test Page:** https://travel-tracker-9kcnnugqp-veras-projects-6736a844.vercel.app/test
+
+---
+
+## 📚 NÜTZLICHE BEFEHLE
+
+```bash
+# Development
+npm run dev                    # Lokalen Server starten
+npm run build                  # Production Build erstellen
+npm install <package>          # Package installieren
+
+# Git
+git status                     # Änderungen anzeigen
+git add .                      # Alle Änderungen stagen
+git commit -m "message"        # Committen
+git push origin main           # Zu GitHub pushen
+
+# TypeScript
+npx tsc --noEmit              # Type-Check ohne Build
+
+# Supabase SQL ausführen
+# → Dashboard → SQL Editor → New query
+```
+
+---
+
+## ✅ CHECKLISTE FÜR NEUE FEATURE-ENTWICKLUNG
+
+- [ ] Feature-Beschreibung klar definiert
+- [ ] Betroffene Dateien identifiziert
+- [ ] Datenbank-Schema (falls nötig) geplant
+- [ ] UI-Mockup/Skizze (optional)
+- [ ] Branch erstellen (optional): `git checkout -b feature-name`
+- [ ] Code schreiben
+- [ ] Lokal testen
+- [ ] Committen & Pushen
+- [ ] Auf Vercel testen
+- [ ] Dokumentation updaten
+
+---
+
+## 🎓 GELERNTES AUS DER ENTWICKLUNG
+
+### **Authentifizierung:**
+- UUIDs in `users.id` MÜSSEN identisch mit `auth.users.id` sein
+- RLS Policies brauchen Zeit zum "Einrasten" nach dem Login
+- Auth State Listener ist besser als manuelle Session-Checks
+
+### **Environment Variables:**
+- `.env.local` NIE auf GitHub!
+- Vercel braucht Variables für ALLE Environments (Prod, Preview, Dev)
+- Nach Env-Änderung immer Redeploy
+- Validierung im Code spart Debugging-Zeit
+
+### **Vercel Deployment:**
+- Build-Cache kann alte Fehler verschleiern → "Skip cache" beim Redeploy
+- Hard Refresh im Browser nötig nach Deploy
+- Build Logs sind dein Freund!
+
+### **Supabase:**
+- RLS Policies können tricky sein → im Zweifelsfall temporär deaktivieren zum Testen
+- Service Role Key NUR server-side verwenden
+- SQL Editor ist super zum Debuggen
+
+---
+
+**Letzte Aktualisierung:** 07. November 2025
+**Version:** 3.0 (Nach erfolgreichem Auth-Setup)
+**Status:** ✅ Production Ready (Basis-Features)
+
+---
+
+**Viel Erfolg mit deinem Projekt! 🚀**
+
+Du hast es geschafft! Die App läuft und ist bereit für weitere Features! 🎉
