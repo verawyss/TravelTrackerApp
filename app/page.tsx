@@ -30,10 +30,15 @@ export default function TravelTrackerApp() {
     flag: '🌍',
     start_date: '',
     end_date: '',
-    budget: 0,
     currency: 'EUR',
     status: 'active'
   })
+
+  const popularFlags = [
+    '🌍', '✈️', '🏖️', '🏔️', '🏝️', '🎒', '🚗', '🚢', '🏕️', '🗼',
+    '🇩🇪', '🇨🇭', '🇦🇹', '🇮🇹', '🇫🇷', '🇪🇸', '🇬🇷', '🇵🇹', '🇳🇱', '🇧🇪',
+    '🇬🇧', '🇺🇸', '🇨🇦', '🇲🇽', '🇧🇷', '🇦🇷', '🇯🇵', '🇹🇭', '🇦🇺', '🇳🇿'
+  ]
 
   // ========== ADMIN STATE ==========
   const [showAddUserModal, setShowAddUserModal] = useState(false)
@@ -162,13 +167,18 @@ export default function TravelTrackerApp() {
 
     setLoadingAction(true)
     try {
-      // 1. Trip erstellen
+      // 1. Trip erstellen (OHNE is_public und budget)
       const { data: tripData, error: tripError } = await supabase
         .from('trips')
         .insert({
-          ...newTripData,
-          created_by: currentUser.id,
-          is_public: false
+          name: newTripData.name,
+          destination: newTripData.destination,
+          flag: newTripData.flag,
+          start_date: newTripData.start_date || null,
+          end_date: newTripData.end_date || null,
+          currency: newTripData.currency,
+          status: newTripData.status,
+          created_by: currentUser.id
         })
         .select()
         .single()
@@ -194,7 +204,6 @@ export default function TravelTrackerApp() {
         flag: '🌍',
         start_date: '',
         end_date: '',
-        budget: 0,
         currency: 'EUR',
         status: 'active'
       })
@@ -219,7 +228,6 @@ export default function TravelTrackerApp() {
           flag: editingTrip.flag,
           start_date: editingTrip.start_date,
           end_date: editingTrip.end_date,
-          budget: editingTrip.budget,
           currency: editingTrip.currency,
           status: editingTrip.status
         })
@@ -306,7 +314,6 @@ export default function TravelTrackerApp() {
   // ========== RENDER TABS ==========
   const renderTripsTab = () => (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Meine Reisen</h2>
@@ -321,7 +328,6 @@ export default function TravelTrackerApp() {
         </button>
       </div>
 
-      {/* Trips Grid */}
       {allUserTrips.length === 0 ? (
         <div className="bg-white rounded-xl p-12 text-center border-2 border-dashed border-gray-300">
           <div className="text-6xl mb-4">🌍</div>
@@ -344,7 +350,6 @@ export default function TravelTrackerApp() {
                 currentTrip?.id === trip.id ? 'border-teal-500' : 'border-gray-200'
               }`}
             >
-              {/* Trip Header */}
               <div className="p-6 border-b border-gray-100">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -362,7 +367,6 @@ export default function TravelTrackerApp() {
                 </div>
               </div>
 
-              {/* Trip Info */}
               <div className="p-6 space-y-3">
                 {trip.start_date && (
                   <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -373,19 +377,12 @@ export default function TravelTrackerApp() {
                     </span>
                   </div>
                 )}
-                {trip.budget > 0 && (
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <span>💰</span>
-                    <span>Budget: {trip.budget} {trip.currency}</span>
-                  </div>
-                )}
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <span>👥</span>
                   <span>{trip.trip_members?.[0]?.count || 1} Mitglied(er)</span>
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="p-4 bg-gray-50 rounded-b-xl flex gap-2">
                 <button
                   onClick={() => setCurrentTrip(trip)}
@@ -512,11 +509,12 @@ export default function TravelTrackerApp() {
     if (!showNewTripModal) return null
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+        <div className="bg-white rounded-xl p-8 max-w-2xl w-full my-8">
           <h2 className="text-2xl font-bold mb-6">✈️ Neue Reise erstellen</h2>
           
           <div className="space-y-4">
+            {/* Name & Ziel */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Reisename *</label>
@@ -541,6 +539,30 @@ export default function TravelTrackerApp() {
               </div>
             </div>
 
+            {/* Flaggen-Auswahl */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Flagge / Symbol wählen</label>
+              <div className="grid grid-cols-10 gap-2 p-4 border rounded-lg bg-gray-50 max-h-40 overflow-y-auto">
+                {popularFlags.map((flag) => (
+                  <button
+                    key={flag}
+                    type="button"
+                    onClick={() => setNewTripData({...newTripData, flag})}
+                    className={`text-3xl p-2 rounded-lg hover:bg-white transition-colors ${
+                      newTripData.flag === flag ? 'bg-teal-100 ring-2 ring-teal-500' : 'bg-white'
+                    }`}
+                  >
+                    {flag}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 text-center">
+                <span className="text-4xl">{newTripData.flag}</span>
+                <p className="text-xs text-gray-500 mt-1">Ausgewählt</p>
+              </div>
+            </div>
+
+            {/* Datum */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Startdatum</label>
@@ -563,42 +585,19 @@ export default function TravelTrackerApp() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Flagge</label>
-                <input 
-                  type="text"
-                  placeholder="🌍"
-                  value={newTripData.flag}
-                  onChange={(e) => setNewTripData({...newTripData, flag: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 text-2xl text-center"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Budget</label>
-                <input 
-                  type="number"
-                  placeholder="0"
-                  value={newTripData.budget || ''}
-                  onChange={(e) => setNewTripData({...newTripData, budget: parseFloat(e.target.value) || 0})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Währung</label>
-                <select
-                  value={newTripData.currency}
-                  onChange={(e) => setNewTripData({...newTripData, currency: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-                >
-                  <option value="EUR">EUR (€)</option>
-                  <option value="USD">USD ($)</option>
-                  <option value="CHF">CHF (Fr.)</option>
-                  <option value="GBP">GBP (£)</option>
-                </select>
-              </div>
+            {/* Währung */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Währung</label>
+              <select
+                value={newTripData.currency}
+                onChange={(e) => setNewTripData({...newTripData, currency: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="EUR">EUR (€)</option>
+                <option value="USD">USD ($)</option>
+                <option value="CHF">CHF (Fr.)</option>
+                <option value="GBP">GBP (£)</option>
+              </select>
             </div>
           </div>
 
@@ -612,7 +611,6 @@ export default function TravelTrackerApp() {
                   flag: '🌍',
                   start_date: '',
                   end_date: '',
-                  budget: 0,
                   currency: 'EUR',
                   status: 'active'
                 })
@@ -639,8 +637,8 @@ export default function TravelTrackerApp() {
     if (!showEditTripModal || !editingTrip) return null
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+        <div className="bg-white rounded-xl p-8 max-w-2xl w-full my-8">
           <h2 className="text-2xl font-bold mb-6">✏️ Reise bearbeiten</h2>
           
           <div className="space-y-4">
@@ -666,6 +664,24 @@ export default function TravelTrackerApp() {
               </div>
             </div>
 
+            <div>
+              <label className="block text-sm font-medium mb-2">Flagge / Symbol</label>
+              <div className="grid grid-cols-10 gap-2 p-4 border rounded-lg bg-gray-50 max-h-40 overflow-y-auto">
+                {popularFlags.map((flag) => (
+                  <button
+                    key={flag}
+                    type="button"
+                    onClick={() => setEditingTrip({...editingTrip, flag})}
+                    className={`text-3xl p-2 rounded-lg hover:bg-white transition-colors ${
+                      editingTrip.flag === flag ? 'bg-teal-100 ring-2 ring-teal-500' : 'bg-white'
+                    }`}
+                  >
+                    {flag}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Startdatum</label>
@@ -685,42 +701,6 @@ export default function TravelTrackerApp() {
                   onChange={(e) => setEditingTrip({...editingTrip, end_date: e.target.value})}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
                 />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Flagge</label>
-                <input 
-                  type="text"
-                  value={editingTrip.flag}
-                  onChange={(e) => setEditingTrip({...editingTrip, flag: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg text-2xl text-center"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Budget</label>
-                <input 
-                  type="number"
-                  value={editingTrip.budget || ''}
-                  onChange={(e) => setEditingTrip({...editingTrip, budget: parseFloat(e.target.value) || 0})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Währung</label>
-                <select
-                  value={editingTrip.currency}
-                  onChange={(e) => setEditingTrip({...editingTrip, currency: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg"
-                >
-                  <option value="EUR">EUR</option>
-                  <option value="USD">USD</option>
-                  <option value="CHF">CHF</option>
-                  <option value="GBP">GBP</option>
-                </select>
               </div>
             </div>
 
