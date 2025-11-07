@@ -128,7 +128,7 @@ export default function TravelTrackerApp() {
   }, [])
 
   // ✅ NEU: Separate Funktion zum Laden der User-Daten mit Retry-Logik
-  const loadUserData = async (userId: string, retryCount = 0) => {
+  const loadUserData = async (userId: string, retryCount = 0): Promise<void> => {
     try {
       // Kurze Wartezeit damit der Auth-Kontext sich setzen kann
       if (retryCount === 0) {
