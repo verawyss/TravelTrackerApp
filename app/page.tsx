@@ -64,6 +64,10 @@ export default function TravelTrackerApp() {
     date: new Date().toISOString().split('T')[0]
   })
 
+  // ========== SETTLEMENT STATE ==========
+  const [settlements, setSettlements] = useState<any[]>([])
+  const [showSettlementModal, setShowSettlementModal] = useState(false)
+
   // ========== AUTH ==========
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -690,6 +694,139 @@ export default function TravelTrackerApp() {
     }
   }, [currentTrip, activeTab])
 
+  // ========== SETTLEMENT FUNCTIONS ==========
+  const calculateBalances = () => {
+    if (!currentTrip || expenses.length === 0 || tripMembers.length === 0) {
+      return []
+    }
+
+    // Initialize balances for all members
+    const balances: { [userId: string]: number } = {}
+    tripMembers.forEach(member => {
+      balances[member.user_id] = 0
+    })
+
+    // Calculate balances from expenses
+    expenses.forEach(expense => {
+      const amount = parseFloat(expense.amount)
+      const splitCount = expense.split_between?.length || 1
+      const amountPerPerson = amount / splitCount
+
+      // Person who paid gets positive balance
+      balances[expense.paid_by] = (balances[expense.paid_by] || 0) + amount
+
+      // Everyone in split gets negative balance
+      expense.split_between?.forEach((userId: string) => {
+        balances[userId] = (balances[userId] || 0) - amountPerPerson
+      })
+    })
+
+    // Convert to array with user info
+    return Object.entries(balances).map(([userId, balance]) => {
+      const member = tripMembers.find(m => m.user_id === userId)
+      return {
+        user_id: userId,
+        user_name: member?.user?.name || 'Unbekannt',
+        user_email: member?.user?.email || '',
+        balance: balance,
+        paid: expenses.filter(e => e.paid_by === userId).reduce((sum, e) => sum + parseFloat(e.amount), 0),
+        owes: expenses
+          .filter(e => e.split_between?.includes(userId))
+          .reduce((sum, e) => sum + (parseFloat(e.amount) / (e.split_between?.length || 1)), 0)
+      }
+    }).sort((a, b) => b.balance - a.balance)
+  }
+
+  const calculateOptimizedTransactions = () => {
+    const balances = calculateBalances()
+    const transactions: Array<{from: string, to: string, amount: number, fromName: string, toName: string}> = []
+    
+    // Separate creditors (positive balance) and debtors (negative balance)
+    const creditors = balances.filter(b => b.balance > 0.01).map(b => ({...b}))
+    const debtors = balances.filter(b => b.balance < -0.01).map(b => ({...b, balance: Math.abs(b.balance)}))
+
+    // Greedy algorithm to minimize transactions
+    let creditorIndex = 0
+    let debtorIndex = 0
+
+    while (creditorIndex < creditors.length && debtorIndex < debtors.length) {
+      const creditor = creditors[creditorIndex]
+      const debtor = debtors[debtorIndex]
+      
+      const amount = Math.min(creditor.balance, debtor.balance)
+      
+      transactions.push({
+        from: debtor.user_id,
+        to: creditor.user_id,
+        amount: Math.round(amount * 100) / 100,
+        fromName: debtor.user_name,
+        toName: creditor.user_name
+      })
+
+      creditor.balance -= amount
+      debtor.balance -= amount
+
+      if (creditor.balance < 0.01) creditorIndex++
+      if (debtor.balance < 0.01) debtorIndex++
+    }
+
+    return transactions
+  }
+
+  const markAsSettled = async (fromUserId: string, toUserId: string, amount: number) => {
+    if (!currentTrip) return
+
+    setLoadingAction(true)
+    try {
+      const { error } = await supabase
+        .from('settlements')
+        .insert({
+          trip_id: currentTrip.id,
+          from_user_id: fromUserId,
+          to_user_id: toUserId,
+          amount: amount,
+          settled_at: new Date().toISOString()
+        })
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Als beglichen markiert!' })
+      await loadSettlements(currentTrip.id)
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    } finally {
+      setLoadingAction(false)
+    }
+  }
+
+  const loadSettlements = async (tripId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('settlements')
+        .select(`
+          *,
+          from_user:users!settlements_from_user_id_fkey(name, email),
+          to_user:users!settlements_to_user_id_fkey(name, email)
+        `)
+        .eq('trip_id', tripId)
+        .order('settled_at', { ascending: false })
+
+      if (error) throw error
+      setSettlements(data || [])
+    } catch (error) {
+      console.error('Error loading settlements:', error)
+    }
+  }
+
+  // Load settlements when needed
+  useEffect(() => {
+    if (currentTrip && activeTab === 'settlement') {
+      if (expenses.length === 0) loadExpenses(currentTrip.id)
+      if (tripMembers.length === 0) loadTripMembers(currentTrip.id)
+      loadSettlements(currentTrip.id)
+    }
+  }, [currentTrip, activeTab])
+
   // ========== RENDER TABS ==========
   const renderTripsTab = () => (
     <div className="space-y-6">
@@ -1119,6 +1256,297 @@ export default function TravelTrackerApp() {
     )
   }
 
+  const renderSettlementTab = () => {
+    if (!currentTrip) {
+      return (
+        <div className="bg-white rounded-xl p-12 text-center">
+          <div className="text-6xl mb-4">🌍</div>
+          <h3 className="text-xl font-bold mb-2">Keine Reise ausgewählt</h3>
+          <p className="text-gray-600">Wähle zuerst eine Reise aus.</p>
+        </div>
+      )
+    }
+
+    if (expenses.length === 0) {
+      return (
+        <div className="bg-white rounded-xl p-12 text-center">
+          <div className="text-6xl mb-4">💳</div>
+          <h3 className="text-xl font-bold mb-2">Noch keine Ausgaben</h3>
+          <p className="text-gray-600 mb-6">
+            Füge zuerst Ausgaben hinzu, um die Abrechnung zu sehen.
+          </p>
+          <button
+            onClick={() => setActiveTab('expenses')}
+            className="bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700 inline-flex items-center gap-2"
+          >
+            <span>➕</span>
+            <span>Zu Ausgaben</span>
+          </button>
+        </div>
+      )
+    }
+
+    const balances = calculateBalances()
+    const transactions = calculateOptimizedTransactions()
+    const totalExpenses = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0)
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Abrechnung</h2>
+            <p className="text-gray-600">Wer schuldet wem? • {currentTrip.flag} {currentTrip.name}</p>
+          </div>
+          <div className="text-right">
+            <div className="text-sm text-gray-600">Gesamt-Ausgaben</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {new Intl.NumberFormat('de-DE', { 
+                style: 'currency', 
+                currency: currentTrip.currency 
+              }).format(totalExpenses)}
+            </div>
+          </div>
+        </div>
+
+        {/* Balance Overview */}
+        <div className="bg-white rounded-xl shadow-sm border">
+          <div className="p-6 border-b border-gray-100">
+            <h3 className="text-xl font-bold">💰 Saldo-Übersicht</h3>
+          </div>
+
+          <div className="divide-y">
+            {balances.map((balance) => {
+              const isCurrentUser = balance.user_id === currentUser?.id
+              const isPositive = balance.balance > 0.01
+              const isNegative = balance.balance < -0.01
+              const isBalanced = !isPositive && !isNegative
+
+              return (
+                <div 
+                  key={balance.user_id} 
+                  className={`p-6 ${isCurrentUser ? 'bg-blue-50' : 'hover:bg-gray-50'} transition-colors`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      {/* Avatar */}
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                        isPositive ? 'bg-gradient-to-br from-green-400 to-green-500' :
+                        isNegative ? 'bg-gradient-to-br from-red-400 to-red-500' :
+                        'bg-gradient-to-br from-gray-400 to-gray-500'
+                      }`}>
+                        <span className="text-white font-bold text-lg">
+                          {balance.user_name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+
+                      {/* Info */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-semibold text-gray-900">
+                            {balance.user_name}
+                          </h4>
+                          {isCurrentUser && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                              Du
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                          <span>
+                            💳 Gezahlt: <strong>
+                              {new Intl.NumberFormat('de-DE', { 
+                                style: 'currency', 
+                                currency: currentTrip.currency 
+                              }).format(balance.paid)}
+                            </strong>
+                          </span>
+                          <span>
+                            📊 Anteil: <strong>
+                              {new Intl.NumberFormat('de-DE', { 
+                                style: 'currency', 
+                                currency: currentTrip.currency 
+                              }).format(balance.owes)}
+                            </strong>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Balance */}
+                    <div className="text-right">
+                      <div className={`text-3xl font-bold ${
+                        isPositive ? 'text-green-600' :
+                        isNegative ? 'text-red-600' :
+                        'text-gray-600'
+                      }`}>
+                        {isPositive && '+'}
+                        {new Intl.NumberFormat('de-DE', { 
+                          style: 'currency', 
+                          currency: currentTrip.currency 
+                        }).format(balance.balance)}
+                      </div>
+                      <div className="text-sm text-gray-600 mt-1">
+                        {isPositive && '💰 Bekommt Geld'}
+                        {isNegative && '📉 Schuldet Geld'}
+                        {isBalanced && '✅ Ausgeglichen'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Optimized Transactions */}
+        {transactions.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border">
+            <div className="p-6 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold">🔄 Empfohlene Transaktionen</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Minimale Anzahl Überweisungen zum Ausgleich
+                  </p>
+                </div>
+                <div className="text-sm bg-teal-100 text-teal-800 px-3 py-1 rounded-full font-medium">
+                  {transactions.length} {transactions.length === 1 ? 'Überweisung' : 'Überweisungen'}
+                </div>
+              </div>
+            </div>
+
+            <div className="divide-y">
+              {transactions.map((transaction, index) => {
+                const isInvolved = transaction.from === currentUser?.id || transaction.to === currentUser?.id
+                const isSettled = settlements.some(
+                  s => s.from_user_id === transaction.from && 
+                       s.to_user_id === transaction.to && 
+                       Math.abs(s.amount - transaction.amount) < 0.01
+                )
+
+                return (
+                  <div 
+                    key={`${transaction.from}-${transaction.to}`}
+                    className={`p-6 ${isInvolved ? 'bg-yellow-50' : 'hover:bg-gray-50'} transition-colors`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4 flex-1">
+                        {/* Step Number */}
+                        <div className="w-10 h-10 bg-teal-100 text-teal-700 rounded-full flex items-center justify-center font-bold">
+                          {index + 1}
+                        </div>
+
+                        {/* Transaction Info */}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 text-lg">
+                            <span className="font-semibold text-gray-900">
+                              {transaction.fromName}
+                            </span>
+                            <span className="text-gray-400">→</span>
+                            <span className="font-semibold text-gray-900">
+                              {transaction.toName}
+                            </span>
+                          </div>
+                          {isInvolved && (
+                            <div className="text-sm text-amber-700 mt-1">
+                              {transaction.from === currentUser?.id && '📤 Du musst zahlen'}
+                              {transaction.to === currentUser?.id && '📥 Du bekommst Geld'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Amount & Action */}
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <div className="text-2xl font-bold text-teal-600">
+                            {new Intl.NumberFormat('de-DE', { 
+                              style: 'currency', 
+                              currency: currentTrip.currency 
+                            }).format(transaction.amount)}
+                          </div>
+                        </div>
+
+                        {isSettled ? (
+                          <div className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium flex items-center gap-2">
+                            <span>✅</span>
+                            <span>Beglichen</span>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => markAsSettled(transaction.from, transaction.to, transaction.amount)}
+                            disabled={loadingAction}
+                            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors font-medium disabled:opacity-50"
+                          >
+                            Als beglichen markieren
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Settlement History */}
+        {settlements.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-xl font-bold">📜 Abrechnungs-Historie</h3>
+            </div>
+
+            <div className="divide-y">
+              {settlements.map((settlement) => (
+                <div key={settlement.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">✅</span>
+                      <div>
+                        <div className="text-sm text-gray-900">
+                          <strong>{settlement.from_user?.name}</strong>
+                          {' → '}
+                          <strong>{settlement.to_user?.name}</strong>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {new Date(settlement.settled_at).toLocaleDateString('de-DE', { 
+                            day: '2-digit', 
+                            month: 'short', 
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-lg font-bold text-green-600">
+                      {new Intl.NumberFormat('de-DE', { 
+                        style: 'currency', 
+                        currency: currentTrip.currency 
+                      }).format(settlement.amount)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Info Box */}
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+          <h4 className="font-semibold text-blue-900 mb-2">ℹ️ Wie funktioniert die Abrechnung?</h4>
+          <ul className="space-y-2 text-sm text-blue-800">
+            <li><strong>Saldo:</strong> Positive Zahl = du bekommst Geld zurück, Negative Zahl = du schuldest Geld</li>
+            <li><strong>Optimiert:</strong> Minimale Anzahl Überweisungen für vollständigen Ausgleich</li>
+            <li><strong>Beglichen:</strong> Markiere Transaktionen als erledigt wenn bezahlt</li>
+          </ul>
+        </div>
+      </div>
+    )
+  }
+
   const renderTeamTab = () => {
     if (!currentTrip) {
       return (
@@ -1312,7 +1740,7 @@ export default function TravelTrackerApp() {
       case 'packing': return renderPlaceholder('Packliste', '🎒')
       case 'map': return renderPlaceholder('Karte', '🗺️')
       case 'friends': return renderTeamTab()
-      case 'settlement': return renderPlaceholder('Abrechnung', '💳')
+      case 'settlement': return renderSettlementTab()
       case 'admin': return renderAdminTab()
       default: return null
     }
