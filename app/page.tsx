@@ -50,6 +50,20 @@ export default function TravelTrackerApp() {
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
 
+  // ========== EXPENSES STATE ==========
+  const [expenses, setExpenses] = useState<any[]>([])
+  const [showExpenseModal, setShowExpenseModal] = useState(false)
+  const [editingExpense, setEditingExpense] = useState<any>(null)
+  const [expenseFilter, setExpenseFilter] = useState<string>('all')
+  const [newExpense, setNewExpense] = useState({
+    category: '🍕 Essen & Trinken',
+    description: '',
+    amount: '',
+    paid_by: '',
+    split_between: [] as string[],
+    date: new Date().toISOString().split('T')[0]
+  })
+
   // ========== AUTH ==========
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -518,6 +532,164 @@ export default function TravelTrackerApp() {
     }
   }, [currentTrip, activeTab])
 
+  // ========== EXPENSES FUNCTIONS ==========
+  const expenseCategories = [
+    { emoji: '🍕', label: 'Essen & Trinken' },
+    { emoji: '🏨', label: 'Unterkunft' },
+    { emoji: '🚗', label: 'Transport' },
+    { emoji: '🎫', label: 'Aktivitäten' },
+    { emoji: '🛍️', label: 'Shopping' },
+    { emoji: '💊', label: 'Gesundheit' },
+    { emoji: '📱', label: 'Sonstiges' }
+  ]
+
+  const loadExpenses = async (tripId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('expenses')
+        .select(`
+          *,
+          user:users!expenses_user_id_fkey(name, email),
+          payer:users!expenses_paid_by_fkey(name, email)
+        `)
+        .eq('trip_id', tripId)
+        .order('date', { ascending: false })
+
+      if (error) throw error
+      setExpenses(data || [])
+    } catch (error) {
+      console.error('Error loading expenses:', error)
+    }
+  }
+
+  const createExpense = async () => {
+    if (!currentTrip || !newExpense.description || !newExpense.amount || !newExpense.paid_by) {
+      setAuthMessage({ type: 'error', text: '❌ Bitte alle Pflichtfelder ausfüllen!' })
+      return
+    }
+
+    if (newExpense.split_between.length === 0) {
+      setAuthMessage({ type: 'error', text: '❌ Bitte mindestens eine Person zum Aufteilen auswählen!' })
+      return
+    }
+
+    setLoadingAction(true)
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .insert({
+          trip_id: currentTrip.id,
+          user_id: currentUser.id,
+          category: newExpense.category,
+          description: newExpense.description,
+          amount: parseFloat(newExpense.amount),
+          paid_by: newExpense.paid_by,
+          split_between: newExpense.split_between,
+          date: newExpense.date
+        })
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Ausgabe hinzugefügt!' })
+      setShowExpenseModal(false)
+      resetExpenseForm()
+      await loadExpenses(currentTrip.id)
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    } finally {
+      setLoadingAction(false)
+    }
+  }
+
+  const updateExpense = async () => {
+    if (!editingExpense || !currentTrip) return
+
+    setLoadingAction(true)
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .update({
+          category: editingExpense.category,
+          description: editingExpense.description,
+          amount: parseFloat(editingExpense.amount),
+          paid_by: editingExpense.paid_by,
+          split_between: editingExpense.split_between,
+          date: editingExpense.date
+        })
+        .eq('id', editingExpense.id)
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Ausgabe aktualisiert!' })
+      setShowExpenseModal(false)
+      setEditingExpense(null)
+      await loadExpenses(currentTrip.id)
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    } finally {
+      setLoadingAction(false)
+    }
+  }
+
+  const deleteExpense = async (expenseId: string, description: string) => {
+    if (!confirm(`Ausgabe "${description}" wirklich löschen?`)) return
+
+    setLoadingAction(true)
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', expenseId)
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Ausgabe gelöscht!' })
+      if (currentTrip) await loadExpenses(currentTrip.id)
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    } finally {
+      setLoadingAction(false)
+    }
+  }
+
+  const resetExpenseForm = () => {
+    setNewExpense({
+      category: '🍕 Essen & Trinken',
+      description: '',
+      amount: '',
+      paid_by: '',
+      split_between: [],
+      date: new Date().toISOString().split('T')[0]
+    })
+  }
+
+  const toggleSplitPerson = (userId: string) => {
+    setNewExpense(prev => {
+      const isSelected = prev.split_between.includes(userId)
+      return {
+        ...prev,
+        split_between: isSelected
+          ? prev.split_between.filter(id => id !== userId)
+          : [...prev.split_between, userId]
+      }
+    })
+  }
+
+  const selectAllForSplit = () => {
+    setNewExpense(prev => ({
+      ...prev,
+      split_between: tripMembers.map(m => m.user_id)
+    }))
+  }
+
+  // Load expenses when trip changes
+  useEffect(() => {
+    if (currentTrip && activeTab === 'expenses') {
+      loadExpenses(currentTrip.id)
+      if (tripMembers.length === 0) loadTripMembers(currentTrip.id)
+    }
+  }, [currentTrip, activeTab])
+
   // ========== RENDER TABS ==========
   const renderTripsTab = () => (
     <div className="space-y-6">
@@ -696,7 +868,442 @@ export default function TravelTrackerApp() {
     </div>
   )
 
+  const renderExpensesTab = () => {
+    if (!currentTrip) {
+      return (
+        <div className="bg-white rounded-xl p-12 text-center">
+          <div className="text-6xl mb-4">🌍</div>
+          <h3 className="text-xl font-bold mb-2">Keine Reise ausgewählt</h3>
+          <p className="text-gray-600">Wähle zuerst eine Reise aus.</p>
+        </div>
+      )
+    }
+
+    // Calculate statistics
+    const totalExpenses = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0)
+    const expensesByCategory = expenses.reduce((acc: any, exp) => {
+      acc[exp.category] = (acc[exp.category] || 0) + parseFloat(exp.amount)
+      return acc
+    }, {})
+
+    // Filter expenses
+    const filteredExpenses = expenseFilter === 'all' 
+      ? expenses 
+      : expenses.filter(exp => exp.category === expenseFilter)
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Ausgaben</h2>
+            <p className="text-gray-600">Verwalte Ausgaben für {currentTrip.flag} {currentTrip.name}</p>
+          </div>
+          <button
+            onClick={() => {
+              resetExpenseForm()
+              setEditingExpense(null)
+              setShowExpenseModal(true)
+            }}
+            className="bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-2"
+          >
+            <span className="text-xl">➕</span>
+            <span>Ausgabe hinzufügen</span>
+          </button>
+        </div>
+
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Total */}
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-blue-100">Gesamt</span>
+              <span className="text-3xl">💰</span>
+            </div>
+            <div className="text-3xl font-bold mb-1">
+              {new Intl.NumberFormat('de-DE', { 
+                style: 'currency', 
+                currency: currentTrip.currency 
+              }).format(totalExpenses)}
+            </div>
+            <div className="text-blue-100 text-sm">{expenses.length} Ausgaben</div>
+          </div>
+
+          {/* Per Person */}
+          <div className="bg-gradient-to-br from-teal-500 to-teal-600 rounded-xl p-6 text-white">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-teal-100">Pro Person</span>
+              <span className="text-3xl">👤</span>
+            </div>
+            <div className="text-3xl font-bold mb-1">
+              {new Intl.NumberFormat('de-DE', { 
+                style: 'currency', 
+                currency: currentTrip.currency 
+              }).format(tripMembers.length > 0 ? totalExpenses / tripMembers.length : 0)}
+            </div>
+            <div className="text-teal-100 text-sm">Ø bei {tripMembers.length} Personen</div>
+          </div>
+
+          {/* Top Category */}
+          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-purple-100">Top Kategorie</span>
+              <span className="text-3xl">📊</span>
+            </div>
+            <div className="text-2xl font-bold mb-1">
+              {Object.keys(expensesByCategory).length > 0
+                ? Object.entries(expensesByCategory).sort((a: any, b: any) => b[1] - a[1])[0][0].split(' ')[0]
+                : '—'}
+            </div>
+            <div className="text-purple-100 text-sm">
+              {Object.keys(expensesByCategory).length > 0
+                ? new Intl.NumberFormat('de-DE', { 
+                    style: 'currency', 
+                    currency: currentTrip.currency 
+                  }).format(Object.entries(expensesByCategory).sort((a: any, b: any) => b[1] - a[1])[0][1] as number)
+                : 'Noch keine Ausgaben'}
+            </div>
+          </div>
+        </div>
+
+        {/* Category Filter */}
+        <div className="bg-white rounded-xl shadow-sm border p-4">
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <span className="text-sm font-medium text-gray-600 whitespace-nowrap">Filter:</span>
+            <button
+              onClick={() => setExpenseFilter('all')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                expenseFilter === 'all'
+                  ? 'bg-teal-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Alle ({expenses.length})
+            </button>
+            {expenseCategories.map((cat) => {
+              const count = expenses.filter(e => e.category === `${cat.emoji} ${cat.label}`).length
+              return (
+                <button
+                  key={cat.label}
+                  onClick={() => setExpenseFilter(`${cat.emoji} ${cat.label}`)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                    expenseFilter === `${cat.emoji} ${cat.label}`
+                      ? 'bg-teal-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {cat.emoji} {cat.label} ({count})
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Expenses List */}
+        <div className="bg-white rounded-xl shadow-sm border">
+          <div className="p-6 border-b border-gray-100">
+            <h3 className="text-xl font-bold">
+              📝 Ausgaben ({filteredExpenses.length})
+            </h3>
+          </div>
+
+          {filteredExpenses.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="text-6xl mb-4">💰</div>
+              <h3 className="text-xl font-bold mb-2">
+                {expenseFilter === 'all' ? 'Noch keine Ausgaben' : 'Keine Ausgaben in dieser Kategorie'}
+              </h3>
+              <p className="text-gray-600 mb-6">
+                {expenseFilter === 'all' 
+                  ? 'Füge die erste Ausgabe hinzu!' 
+                  : 'Wähle eine andere Kategorie oder füge eine Ausgabe hinzu.'}
+              </p>
+              <button
+                onClick={() => {
+                  resetExpenseForm()
+                  setShowExpenseModal(true)
+                }}
+                className="bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700 inline-flex items-center gap-2"
+              >
+                <span>➕</span>
+                <span>Erste Ausgabe hinzufügen</span>
+              </button>
+            </div>
+          ) : (
+            <div className="divide-y">
+              {filteredExpenses.map((expense) => (
+                <div key={expense.id} className="p-6 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-4 flex-1">
+                      {/* Category Icon */}
+                      <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center text-2xl">
+                        {expense.category.split(' ')[0]}
+                      </div>
+
+                      {/* Info */}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-1">
+                          <h4 className="font-semibold text-gray-900 text-lg">
+                            {expense.description}
+                          </h4>
+                          <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                            {expense.category.replace(/^[^\s]+ /, '')}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                          <div className="flex items-center gap-1">
+                            <span>💳</span>
+                            <span>Bezahlt von: <strong>{expense.payer?.name || 'Unbekannt'}</strong></span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span>👥</span>
+                            <span>Geteilt durch: <strong>{expense.split_between?.length || 0} Person(en)</strong></span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span>📅</span>
+                            <span>{new Date(expense.date).toLocaleDateString('de-DE')}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Amount & Actions */}
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-gray-900">
+                          {new Intl.NumberFormat('de-DE', { 
+                            style: 'currency', 
+                            currency: currentTrip.currency 
+                          }).format(expense.amount)}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {new Intl.NumberFormat('de-DE', { 
+                            style: 'currency', 
+                            currency: currentTrip.currency 
+                          }).format(expense.amount / (expense.split_between?.length || 1))} / Person
+                        </div>
+                      </div>
+
+                      {/* Edit & Delete */}
+                      {(expense.user_id === currentUser?.id || 
+                        tripMembers.find(m => m.user_id === currentUser?.id)?.role === 'owner' ||
+                        tripMembers.find(m => m.user_id === currentUser?.id)?.role === 'admin') && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingExpense(expense)
+                              setShowExpenseModal(true)
+                            }}
+                            className="p-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            onClick={() => deleteExpense(expense.id, expense.description)}
+                            disabled={loadingAction}
+                            className="p-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   const renderTeamTab = () => {
+    if (!currentTrip) {
+      return (
+        <div className="bg-white rounded-xl p-12 text-center">
+          <div className="text-6xl mb-4">🌍</div>
+          <h3 className="text-xl font-bold mb-2">Keine Reise ausgewählt</h3>
+          <p className="text-gray-600">Wähle zuerst eine Reise aus, um das Team zu verwalten.</p>
+        </div>
+      )
+    }
+
+    const currentUserMember = tripMembers.find(m => m.user_id === currentUser?.id)
+    const isOwnerOrAdmin = currentUserMember?.role === 'owner' || currentUserMember?.role === 'admin'
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Team Management</h2>
+            <p className="text-gray-600">Verwalte Mitglieder für {currentTrip.flag} {currentTrip.name}</p>
+          </div>
+          {isOwnerOrAdmin && (
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-2"
+            >
+              <span className="text-xl">➕</span>
+              <span>Mitglied einladen</span>
+            </button>
+          )}
+        </div>
+
+        {/* Pending Invitations */}
+        {pendingInvitations.length > 0 && isOwnerOrAdmin && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-yellow-900 mb-4">
+              📬 Ausstehende Einladungen ({pendingInvitations.length})
+            </h3>
+            <div className="space-y-3">
+              {pendingInvitations.map((invitation) => (
+                <div key={invitation.id} className="bg-white rounded-lg p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                      <span className="text-xl">📧</span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">{invitation.invited_email}</p>
+                      <p className="text-sm text-gray-600">
+                        Eingeladen am {new Date(invitation.created_at).toLocaleDateString('de-DE')}
+                        {' • Läuft ab am '}{new Date(invitation.expires_at).toLocaleDateString('de-DE')}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => cancelInvitation(invitation.id)}
+                    disabled={loadingAction}
+                    className="px-4 py-2 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                  >
+                    Zurückziehen
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Members List */}
+        <div className="bg-white rounded-xl shadow-sm border">
+          <div className="p-6 border-b border-gray-100">
+            <h3 className="text-xl font-bold">👥 Mitglieder ({tripMembers.length})</h3>
+          </div>
+
+          {tripMembers.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="text-6xl mb-4">👥</div>
+              <h3 className="text-xl font-bold mb-2">Noch keine Mitglieder</h3>
+              <p className="text-gray-600 mb-6">Lade Personen ein, um gemeinsam zu planen!</p>
+              {isOwnerOrAdmin && (
+                <button
+                  onClick={() => setShowInviteModal(true)}
+                  className="bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700 inline-flex items-center gap-2"
+                >
+                  <span>➕</span>
+                  <span>Erste Person einladen</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="divide-y">
+              {tripMembers.map((member) => {
+                const isCurrentUser = member.user_id === currentUser?.id
+                const memberIsOwner = member.role === 'owner'
+                
+                return (
+                  <div key={member.id} className="p-6 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        {/* Avatar */}
+                        <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-teal-500 rounded-full flex items-center justify-center">
+                          <span className="text-white font-bold text-lg">
+                            {member.user?.name?.charAt(0).toUpperCase() || '?'}
+                          </span>
+                        </div>
+
+                        {/* Info */}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-gray-900">
+                              {member.user?.name || 'Unbekannt'}
+                            </h4>
+                            {isCurrentUser && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                                Du
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600">{member.user?.email}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Beigetreten: {new Date(member.joined_at).toLocaleDateString('de-DE')}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Role & Actions */}
+                      <div className="flex items-center gap-3">
+                        {/* Role Badge/Selector */}
+                        {isOwnerOrAdmin && !memberIsOwner && !isCurrentUser ? (
+                          <select
+                            value={member.role}
+                            onChange={(e) => updateMemberRole(member.id, e.target.value)}
+                            disabled={loadingAction}
+                            className={`px-3 py-1 rounded-full text-sm font-medium border-2 cursor-pointer
+                              ${member.role === 'owner' ? 'bg-purple-100 text-purple-700 border-purple-200' : 
+                                member.role === 'admin' ? 'bg-blue-100 text-blue-700 border-blue-200' : 
+                                'bg-gray-100 text-gray-700 border-gray-200'}`}
+                          >
+                            <option value="member">👤 Member</option>
+                            <option value="admin">⭐ Admin</option>
+                          </select>
+                        ) : (
+                          <span className={`px-3 py-1 rounded-full text-sm font-medium
+                            ${member.role === 'owner' ? 'bg-purple-100 text-purple-700' : 
+                              member.role === 'admin' ? 'bg-blue-100 text-blue-700' : 
+                              'bg-gray-100 text-gray-700'}`}
+                          >
+                            {member.role === 'owner' ? '👑 Owner' : 
+                             member.role === 'admin' ? '⭐ Admin' : 
+                             '👤 Member'}
+                          </span>
+                        )}
+
+                        {/* Remove Button */}
+                        {isOwnerOrAdmin && !memberIsOwner && !isCurrentUser && (
+                          <button
+                            onClick={() => removeMember(member.id, member.user?.name || 'Mitglied')}
+                            disabled={loadingAction}
+                            className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                          >
+                            Entfernen
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Info Box */}
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+          <h4 className="font-semibold text-blue-900 mb-2">ℹ️ Rollen-Erklärung</h4>
+          <ul className="space-y-2 text-sm text-blue-800">
+            <li><strong>👑 Owner:</strong> Vollzugriff - kann Reise löschen und alle Mitglieder verwalten</li>
+            <li><strong>⭐ Admin:</strong> Kann Mitglieder einladen, Ausgaben verwalten und Inhalte bearbeiten</li>
+            <li><strong>👤 Member:</strong> Kann Inhalte sehen und eigene Ausgaben hinzufügen</li>
+          </ul>
+        </div>
+      </div>
+    )
+  }
+
+  const renderExpensesTab = () => {
     if (!currentTrip) {
       return (
         <div className="bg-white rounded-xl p-12 text-center">
@@ -884,7 +1491,7 @@ export default function TravelTrackerApp() {
     switch (activeTab) {
       case 'overview': return renderOverview()
       case 'trips': return renderTripsTab()
-      case 'expenses': return renderPlaceholder('Ausgaben', '💰')
+      case 'expenses': return renderExpensesTab()
       case 'itinerary': return renderPlaceholder('Reiseplan', '🗓️')
       case 'packing': return renderPlaceholder('Packliste', '🎒')
       case 'map': return renderPlaceholder('Karte', '🗺️')
@@ -1124,6 +1731,253 @@ export default function TravelTrackerApp() {
               className="flex-1 bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700"
             >
               {loadingAction ? 'Speichere...' : '💾 Speichern'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderExpenseModal = () => {
+    if (!showExpenseModal) return null
+
+    const isEditing = !!editingExpense
+    const modalExpense = isEditing ? editingExpense : newExpense
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+        <div className="bg-white rounded-xl p-8 max-w-2xl w-full my-8">
+          <h2 className="text-2xl font-bold mb-6">
+            {isEditing ? '✏️ Ausgabe bearbeiten' : '➕ Neue Ausgabe'}
+          </h2>
+          
+          <div className="space-y-6">
+            {/* Category Selection */}
+            <div>
+              <label className="block text-sm font-medium mb-3">Kategorie *</label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {expenseCategories.map((cat) => {
+                  const fullCategory = `${cat.emoji} ${cat.label}`
+                  const isSelected = modalExpense.category === fullCategory
+                  
+                  return (
+                    <button
+                      key={cat.label}
+                      type="button"
+                      onClick={() => {
+                        if (isEditing) {
+                          setEditingExpense({...editingExpense, category: fullCategory})
+                        } else {
+                          setNewExpense({...newExpense, category: fullCategory})
+                        }
+                      }}
+                      className={`p-4 rounded-lg border-2 transition-all text-center ${
+                        isSelected
+                          ? 'border-teal-500 bg-teal-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="text-3xl mb-1">{cat.emoji}</div>
+                      <div className="text-xs font-medium text-gray-700">{cat.label}</div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Description & Amount */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Beschreibung *</label>
+                <input 
+                  type="text"
+                  placeholder="z.B. Restaurant am Strand"
+                  value={modalExpense.description}
+                  onChange={(e) => {
+                    if (isEditing) {
+                      setEditingExpense({...editingExpense, description: e.target.value})
+                    } else {
+                      setNewExpense({...newExpense, description: e.target.value})
+                    }
+                  }}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Betrag * ({currentTrip?.currency})</label>
+                <input 
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="0.00"
+                  value={modalExpense.amount}
+                  onChange={(e) => {
+                    if (isEditing) {
+                      setEditingExpense({...editingExpense, amount: e.target.value})
+                    } else {
+                      setNewExpense({...newExpense, amount: e.target.value})
+                    }
+                  }}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+
+            {/* Date */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Datum</label>
+              <input 
+                type="date"
+                value={modalExpense.date}
+                onChange={(e) => {
+                  if (isEditing) {
+                    setEditingExpense({...editingExpense, date: e.target.value})
+                  } else {
+                    setNewExpense({...newExpense, date: e.target.value})
+                  }
+                }}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+
+            {/* Paid By */}
+            <div>
+              <label className="block text-sm font-medium mb-2">Bezahlt von *</label>
+              <select
+                value={modalExpense.paid_by}
+                onChange={(e) => {
+                  if (isEditing) {
+                    setEditingExpense({...editingExpense, paid_by: e.target.value})
+                  } else {
+                    setNewExpense({...newExpense, paid_by: e.target.value})
+                  }
+                }}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="">-- Person auswählen --</option>
+                {tripMembers.map((member) => (
+                  <option key={member.user_id} value={member.user_id}>
+                    {member.user?.name} {member.user_id === currentUser?.id ? '(Du)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Split Between */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <label className="block text-sm font-medium">Aufteilen zwischen *</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isEditing) {
+                      setEditingExpense({
+                        ...editingExpense,
+                        split_between: tripMembers.map(m => m.user_id)
+                      })
+                    } else {
+                      selectAllForSplit()
+                    }
+                  }}
+                  className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+                >
+                  Alle auswählen
+                </button>
+              </div>
+              
+              <div className="border rounded-lg p-4 space-y-2 max-h-48 overflow-y-auto">
+                {tripMembers.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    Keine Mitglieder verfügbar. Gehe zum Team Tab um Mitglieder hinzuzufügen.
+                  </p>
+                ) : (
+                  tripMembers.map((member) => {
+                    const isSelected = modalExpense.split_between?.includes(member.user_id)
+                    
+                    return (
+                      <label
+                        key={member.user_id}
+                        className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {
+                            if (isEditing) {
+                              const newSplit = isSelected
+                                ? editingExpense.split_between.filter((id: string) => id !== member.user_id)
+                                : [...editingExpense.split_between, member.user_id]
+                              setEditingExpense({...editingExpense, split_between: newSplit})
+                            } else {
+                              toggleSplitPerson(member.user_id)
+                            }
+                          }}
+                          className="w-5 h-5 text-teal-600 rounded focus:ring-2 focus:ring-teal-500"
+                        />
+                        <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-teal-500 rounded-full flex items-center justify-center">
+                          <span className="text-white font-bold text-sm">
+                            {member.user?.name?.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">
+                            {member.user?.name}
+                            {member.user_id === currentUser?.id && (
+                              <span className="text-xs text-gray-500 ml-2">(Du)</span>
+                            )}
+                          </div>
+                        </div>
+                        {modalExpense.amount && isSelected && (
+                          <div className="text-sm text-gray-600">
+                            {new Intl.NumberFormat('de-DE', { 
+                              style: 'currency', 
+                              currency: currentTrip?.currency || 'EUR'
+                            }).format(parseFloat(modalExpense.amount) / (modalExpense.split_between?.length || 1))}
+                          </div>
+                        )}
+                      </label>
+                    )
+                  })
+                )}
+              </div>
+              
+              {modalExpense.split_between && modalExpense.split_between.length > 0 && (
+                <p className="text-sm text-gray-600 mt-2">
+                  {modalExpense.split_between.length} Person(en) ausgewählt
+                  {modalExpense.amount && (
+                    <span className="font-medium">
+                      {' • '}
+                      {new Intl.NumberFormat('de-DE', { 
+                        style: 'currency', 
+                        currency: currentTrip?.currency || 'EUR'
+                      }).format(parseFloat(modalExpense.amount) / modalExpense.split_between.length)} pro Person
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 mt-8">
+            <button 
+              onClick={() => {
+                setShowExpenseModal(false)
+                setEditingExpense(null)
+                resetExpenseForm()
+              }}
+              className="flex-1 px-6 py-3 border rounded-lg hover:bg-gray-50 transition-colors"
+              disabled={loadingAction}
+            >
+              Abbrechen
+            </button>
+            <button 
+              onClick={isEditing ? updateExpense : createExpense}
+              disabled={loadingAction}
+              className="flex-1 bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700 disabled:opacity-50 transition-colors font-medium"
+            >
+              {loadingAction ? 'Lädt...' : (isEditing ? 'Speichern' : 'Hinzufügen')}
             </button>
           </div>
         </div>
@@ -1437,6 +2291,7 @@ export default function TravelTrackerApp() {
       {renderEditTripModal()}
       {renderAddUserModal()}
       {renderInviteModal()}
+      {renderExpenseModal()}
     </div>
   )
 }
