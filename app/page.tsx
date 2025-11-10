@@ -44,6 +44,12 @@ export default function TravelTrackerApp() {
   const [showAddUserModal, setShowAddUserModal] = useState(false)
   const [newUser, setNewUser] = useState({ email: '', password: '', name: '' })
 
+  // ========== TEAM MANAGEMENT STATE ==========
+  const [tripMembers, setTripMembers] = useState<any[]>([])
+  const [pendingInvitations, setPendingInvitations] = useState<any[]>([])
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+
   // ========== AUTH ==========
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -334,6 +340,184 @@ export default function TravelTrackerApp() {
     }
   }
 
+  // ========== TEAM MANAGEMENT FUNCTIONS ==========
+  const loadTripMembers = async (tripId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('trip_members')
+        .select(`
+          *,
+          user:users(*)
+        `)
+        .eq('trip_id', tripId)
+        .order('joined_at', { ascending: true })
+
+      if (error) throw error
+      setTripMembers(data || [])
+    } catch (error) {
+      console.error('Error loading members:', error)
+    }
+  }
+
+  const loadPendingInvitations = async (tripId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('invitations')
+        .select(`
+          *,
+          inviter:users!invited_by(name)
+        `)
+        .eq('trip_id', tripId)
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setPendingInvitations(data || [])
+    } catch (error) {
+      console.error('Error loading invitations:', error)
+    }
+  }
+
+  const inviteUserToTrip = async () => {
+    if (!currentTrip || !inviteEmail) {
+      setAuthMessage({ type: 'error', text: '❌ Bitte Email eingeben!' })
+      return
+    }
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(inviteEmail)) {
+      setAuthMessage({ type: 'error', text: '❌ Ungültige Email-Adresse!' })
+      return
+    }
+
+    setLoadingAction(true)
+    try {
+      // Check if user already member
+      const { data: existingMember } = await supabase
+        .from('trip_members')
+        .select('id')
+        .eq('trip_id', currentTrip.id)
+        .eq('user_id', (await supabase.from('users').select('id').eq('email', inviteEmail).single()).data?.id || '')
+        .single()
+
+      if (existingMember) {
+        throw new Error('Benutzer ist bereits Mitglied dieser Reise!')
+      }
+
+      // Generate token
+      const tokenArray = new Uint8Array(32)
+      crypto.getRandomValues(tokenArray)
+      const token = Array.from(tokenArray)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('')
+
+      // Check if user exists
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', inviteEmail)
+        .single()
+
+      // Create invitation
+      const { error } = await supabase
+        .from('invitations')
+        .insert({
+          trip_id: currentTrip.id,
+          invited_by: currentUser.id,
+          invited_email: inviteEmail,
+          invited_user_id: existingUser?.id || null,
+          token,
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          status: 'pending'
+        })
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Einladung versendet!' })
+      setShowInviteModal(false)
+      setInviteEmail('')
+      await loadPendingInvitations(currentTrip.id)
+
+      // TODO: Send email notification
+      console.log(`📧 Einladungs-Link: ${window.location.origin}/invite/${token}`)
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    } finally {
+      setLoadingAction(false)
+    }
+  }
+
+  const removeMember = async (memberId: string, userName: string) => {
+    if (!confirm(`${userName} wirklich von der Reise entfernen?`)) return
+
+    setLoadingAction(true)
+    try {
+      const { error } = await supabase
+        .from('trip_members')
+        .delete()
+        .eq('id', memberId)
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Mitglied entfernt!' })
+      if (currentTrip) await loadTripMembers(currentTrip.id)
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    } finally {
+      setLoadingAction(false)
+    }
+  }
+
+  const updateMemberRole = async (memberId: string, newRole: string) => {
+    setLoadingAction(true)
+    try {
+      const { error } = await supabase
+        .from('trip_members')
+        .update({ role: newRole })
+        .eq('id', memberId)
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Rolle aktualisiert!' })
+      if (currentTrip) await loadTripMembers(currentTrip.id)
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    } finally {
+      setLoadingAction(false)
+    }
+  }
+
+  const cancelInvitation = async (invitationId: string) => {
+    if (!confirm('Einladung wirklich zurückziehen?')) return
+
+    setLoadingAction(true)
+    try {
+      const { error } = await supabase
+        .from('invitations')
+        .delete()
+        .eq('id', invitationId)
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Einladung zurückgezogen!' })
+      if (currentTrip) await loadPendingInvitations(currentTrip.id)
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    } finally {
+      setLoadingAction(false)
+    }
+  }
+
+  // Load members when trip changes
+  useEffect(() => {
+    if (currentTrip && activeTab === 'friends') {
+      loadTripMembers(currentTrip.id)
+      loadPendingInvitations(currentTrip.id)
+    }
+  }, [currentTrip, activeTab])
+
   // ========== RENDER TABS ==========
   const renderTripsTab = () => (
     <div className="space-y-6">
@@ -512,6 +696,190 @@ export default function TravelTrackerApp() {
     </div>
   )
 
+  const renderTeamTab = () => {
+    if (!currentTrip) {
+      return (
+        <div className="bg-white rounded-xl p-12 text-center">
+          <div className="text-6xl mb-4">🌍</div>
+          <h3 className="text-xl font-bold mb-2">Keine Reise ausgewählt</h3>
+          <p className="text-gray-600">Wähle zuerst eine Reise aus, um das Team zu verwalten.</p>
+        </div>
+      )
+    }
+
+    const currentUserMember = tripMembers.find(m => m.user_id === currentUser?.id)
+    const isOwnerOrAdmin = currentUserMember?.role === 'owner' || currentUserMember?.role === 'admin'
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Team Management</h2>
+            <p className="text-gray-600">Verwalte Mitglieder für {currentTrip.flag} {currentTrip.name}</p>
+          </div>
+          {isOwnerOrAdmin && (
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700 transition-colors flex items-center gap-2"
+            >
+              <span className="text-xl">➕</span>
+              <span>Mitglied einladen</span>
+            </button>
+          )}
+        </div>
+
+        {/* Pending Invitations */}
+        {pendingInvitations.length > 0 && isOwnerOrAdmin && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-yellow-900 mb-4">
+              📬 Ausstehende Einladungen ({pendingInvitations.length})
+            </h3>
+            <div className="space-y-3">
+              {pendingInvitations.map((invitation) => (
+                <div key={invitation.id} className="bg-white rounded-lg p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
+                      <span className="text-xl">📧</span>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">{invitation.invited_email}</p>
+                      <p className="text-sm text-gray-600">
+                        Eingeladen am {new Date(invitation.created_at).toLocaleDateString('de-DE')}
+                        {' • Läuft ab am '}{new Date(invitation.expires_at).toLocaleDateString('de-DE')}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => cancelInvitation(invitation.id)}
+                    disabled={loadingAction}
+                    className="px-4 py-2 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                  >
+                    Zurückziehen
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Members List */}
+        <div className="bg-white rounded-xl shadow-sm border">
+          <div className="p-6 border-b border-gray-100">
+            <h3 className="text-xl font-bold">👥 Mitglieder ({tripMembers.length})</h3>
+          </div>
+
+          {tripMembers.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="text-6xl mb-4">👥</div>
+              <h3 className="text-xl font-bold mb-2">Noch keine Mitglieder</h3>
+              <p className="text-gray-600 mb-6">Lade Personen ein, um gemeinsam zu planen!</p>
+              {isOwnerOrAdmin && (
+                <button
+                  onClick={() => setShowInviteModal(true)}
+                  className="bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700 inline-flex items-center gap-2"
+                >
+                  <span>➕</span>
+                  <span>Erste Person einladen</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="divide-y">
+              {tripMembers.map((member) => {
+                const isCurrentUser = member.user_id === currentUser?.id
+                const memberIsOwner = member.role === 'owner'
+                
+                return (
+                  <div key={member.id} className="p-6 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        {/* Avatar */}
+                        <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-teal-500 rounded-full flex items-center justify-center">
+                          <span className="text-white font-bold text-lg">
+                            {member.user?.name?.charAt(0).toUpperCase() || '?'}
+                          </span>
+                        </div>
+
+                        {/* Info */}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-gray-900">
+                              {member.user?.name || 'Unbekannt'}
+                            </h4>
+                            {isCurrentUser && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                                Du
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600">{member.user?.email}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Beigetreten: {new Date(member.joined_at).toLocaleDateString('de-DE')}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Role & Actions */}
+                      <div className="flex items-center gap-3">
+                        {/* Role Badge/Selector */}
+                        {isOwnerOrAdmin && !memberIsOwner && !isCurrentUser ? (
+                          <select
+                            value={member.role}
+                            onChange={(e) => updateMemberRole(member.id, e.target.value)}
+                            disabled={loadingAction}
+                            className={`px-3 py-1 rounded-full text-sm font-medium border-2 cursor-pointer
+                              ${member.role === 'owner' ? 'bg-purple-100 text-purple-700 border-purple-200' : 
+                                member.role === 'admin' ? 'bg-blue-100 text-blue-700 border-blue-200' : 
+                                'bg-gray-100 text-gray-700 border-gray-200'}`}
+                          >
+                            <option value="member">👤 Member</option>
+                            <option value="admin">⭐ Admin</option>
+                          </select>
+                        ) : (
+                          <span className={`px-3 py-1 rounded-full text-sm font-medium
+                            ${member.role === 'owner' ? 'bg-purple-100 text-purple-700' : 
+                              member.role === 'admin' ? 'bg-blue-100 text-blue-700' : 
+                              'bg-gray-100 text-gray-700'}`}
+                          >
+                            {member.role === 'owner' ? '👑 Owner' : 
+                             member.role === 'admin' ? '⭐ Admin' : 
+                             '👤 Member'}
+                          </span>
+                        )}
+
+                        {/* Remove Button */}
+                        {isOwnerOrAdmin && !memberIsOwner && !isCurrentUser && (
+                          <button
+                            onClick={() => removeMember(member.id, member.user?.name || 'Mitglied')}
+                            disabled={loadingAction}
+                            className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                          >
+                            Entfernen
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Info Box */}
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
+          <h4 className="font-semibold text-blue-900 mb-2">ℹ️ Rollen-Erklärung</h4>
+          <ul className="space-y-2 text-sm text-blue-800">
+            <li><strong>👑 Owner:</strong> Vollzugriff - kann Reise löschen und alle Mitglieder verwalten</li>
+            <li><strong>⭐ Admin:</strong> Kann Mitglieder einladen, Ausgaben verwalten und Inhalte bearbeiten</li>
+            <li><strong>👤 Member:</strong> Kann Inhalte sehen und eigene Ausgaben hinzufügen</li>
+          </ul>
+        </div>
+      </div>
+    )
+  }
+
   function renderTabContent() {
     switch (activeTab) {
       case 'overview': return renderOverview()
@@ -520,7 +888,7 @@ export default function TravelTrackerApp() {
       case 'itinerary': return renderPlaceholder('Reiseplan', '🗓️')
       case 'packing': return renderPlaceholder('Packliste', '🎒')
       case 'map': return renderPlaceholder('Karte', '🗺️')
-      case 'friends': return renderPlaceholder('Team', '👥')
+      case 'friends': return renderTeamTab()
       case 'settlement': return renderPlaceholder('Abrechnung', '💳')
       case 'admin': return renderAdminTab()
       default: return null
@@ -756,6 +1124,59 @@ export default function TravelTrackerApp() {
               className="flex-1 bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700"
             >
               {loadingAction ? 'Speichere...' : '💾 Speichern'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderInviteModal = () => {
+    if (!showInviteModal) return null
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl p-8 max-w-md w-full">
+          <h2 className="text-2xl font-bold mb-6">✉️ Mitglied einladen</h2>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">E-Mail Adresse *</label>
+              <input 
+                type="email"
+                placeholder="beispiel@email.com"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                autoFocus
+              />
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800">
+                <strong>ℹ️ Hinweis:</strong> Die eingeladene Person erhält einen Link per Email 
+                und kann der Reise beitreten. Die Einladung ist 7 Tage gültig.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button 
+              onClick={() => {
+                setShowInviteModal(false)
+                setInviteEmail('')
+              }}
+              className="flex-1 px-6 py-2 border rounded-lg hover:bg-gray-50"
+              disabled={loadingAction}
+            >
+              Abbrechen
+            </button>
+            <button 
+              onClick={inviteUserToTrip}
+              disabled={loadingAction || !inviteEmail}
+              className="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+            >
+              {loadingAction ? 'Lädt...' : 'Einladen'}
             </button>
           </div>
         </div>
@@ -1015,6 +1436,7 @@ export default function TravelTrackerApp() {
       {renderNewTripModal()}
       {renderEditTripModal()}
       {renderAddUserModal()}
+      {renderInviteModal()}
     </div>
   )
 }
