@@ -137,25 +137,48 @@ export default function TravelTrackerApp() {
   // ========== TRIPS FUNCTIONS ==========
   const loadAllTrips = async (user?: any) => {
     const userData = user || currentUser
-    if (!userData) return
+    if (!userData) {
+      console.log('❌ loadAllTrips: No user data')
+      return
+    }
+
+    console.log('🔍 Loading trips for user:', userData.id, userData.email)
 
     try {
+      // Einfacher Query ohne OR - nur trips die der User erstellt hat
       const { data, error } = await supabase
         .from('trips')
-        .select(`
-          *,
-          trip_members(count)
-        `)
-        .or(`created_by.eq.${userData.id},id.in.(select trip_id from trip_members where user_id=${userData.id})`)
+        .select('*')
+        .eq('created_by', userData.id)
         .order('created_at', { ascending: false })
 
+      console.log('📊 Trips query result:', { data, error })
+
       if (error) throw error
+      
+      // Zähle Members für jeden Trip separat
+      if (data) {
+        console.log(`✅ Found ${data.length} trips`)
+        for (const trip of data) {
+          const { count } = await supabase
+            .from('trip_members')
+            .select('*', { count: 'exact', head: true })
+            .eq('trip_id', trip.id)
+          
+          trip.memberCount = count || 0
+          console.log(`  Trip "${trip.name}" has ${trip.memberCount} members`)
+        }
+      } else {
+        console.log('⚠️ No trips found')
+      }
+      
       setAllUserTrips(data || [])
       if (data && data.length > 0 && !currentTrip) {
         setCurrentTrip(data[0])
+        console.log('🎯 Set current trip to:', data[0].name)
       }
     } catch (error) {
-      console.error('Error loading trips:', error)
+      console.error('❌ Error loading trips:', error)
     }
   }
 
@@ -379,7 +402,7 @@ export default function TravelTrackerApp() {
                 )}
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <span>👥</span>
-                  <span>{trip.trip_members?.[0]?.count || 1} Mitglied(er)</span>
+                  <span>{trip.memberCount || 1} Mitglied(er)</span>
                 </div>
               </div>
 
