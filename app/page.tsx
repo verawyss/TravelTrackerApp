@@ -548,6 +548,7 @@ export default function TravelTrackerApp() {
   ]
 
   const loadExpenses = async (tripId: string) => {
+    console.log('🔍 Loading expenses for trip:', tripId)
     try {
       const { data, error } = await supabase
         .from('expenses')
@@ -559,10 +560,17 @@ export default function TravelTrackerApp() {
         .eq('trip_id', tripId)
         .order('date', { ascending: false })
 
-      if (error) throw error
+      console.log('📊 Expenses query result:', { data, error })
+      
+      if (error) {
+        console.error('❌ Error loading expenses:', error)
+        throw error
+      }
+      
+      console.log(`✅ Loaded ${data?.length || 0} expenses`)
       setExpenses(data || [])
     } catch (error) {
-      console.error('Error loading expenses:', error)
+      console.error('❌ Exception loading expenses:', error)
     }
   }
 
