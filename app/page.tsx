@@ -114,6 +114,31 @@ export default function TravelTrackerApp() {
     { id: '📝 Sonstiges', icon: '📝', label: 'Sonstiges' }
   ]
 
+  // ========== MAP/LOCATION STATE ==========
+  const [locations, setLocations] = useState<any[]>([])
+  const [showLocationModal, setShowLocationModal] = useState(false)
+  const [editingLocation, setEditingLocation] = useState<any>(null)
+  const [selectedLocation, setSelectedLocation] = useState<any>(null)
+  const [isGeocoding, setIsGeocoding] = useState(false)
+  const [newLocation, setNewLocation] = useState({
+    name: '',
+    address: '',
+    latitude: 0,
+    longitude: 0,
+    type: '🏨 Hotel',
+    notes: ''
+  })
+
+  const locationTypes = [
+    { id: '🏨 Hotel', icon: '🏨', label: 'Hotel/Unterkunft', color: '#3b82f6' },
+    { id: '🍕 Restaurant', icon: '🍕', label: 'Restaurant/Café', color: '#f59e0b' },
+    { id: '📸 Sehenswürdigkeit', icon: '📸', label: 'Sehenswürdigkeit', color: '#8b5cf6' },
+    { id: '🎯 Aktivität', icon: '🎯', label: 'Aktivität', color: '#10b981' },
+    { id: '🚗 Transport', icon: '🚗', label: 'Transport/Station', color: '#6366f1' },
+    { id: '🛍️ Shopping', icon: '🛍️', label: 'Shopping', color: '#ec4899' },
+    { id: '📍 Sonstiges', icon: '📍', label: 'Sonstiges', color: '#6b7280' }
+  ]
+
   // ========== AUTH ==========
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -873,6 +898,181 @@ export default function TravelTrackerApp() {
     })
   }
 
+  // ========== LOCATION/MAP FUNCTIONS ==========
+  const loadLocations = async (tripId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('locations')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setLocations(data || [])
+    } catch (error) {
+      console.error('Error loading locations:', error)
+    }
+  }
+
+  const geocodeAddress = async (address: string) => {
+    if (!address.trim()) {
+      setAuthMessage({ type: 'error', text: '❌ Bitte eine Adresse eingeben!' })
+      return null
+    }
+
+    setIsGeocoding(true)
+    try {
+      // Using OpenStreetMap Nominatim for geocoding (free, no API key needed)
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+        {
+          headers: {
+            'User-Agent': 'TravelTrackerPro/1.0'
+          }
+        }
+      )
+      
+      const data = await response.json()
+      
+      if (data && data.length > 0) {
+        return {
+          latitude: parseFloat(data[0].lat),
+          longitude: parseFloat(data[0].lon),
+          display_name: data[0].display_name
+        }
+      } else {
+        setAuthMessage({ type: 'error', text: '❌ Adresse nicht gefunden. Bitte genauer eingeben.' })
+        return null
+      }
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ Geocoding-Fehler: ${error.message}` })
+      return null
+    } finally {
+      setIsGeocoding(false)
+    }
+  }
+
+  const handleGeocodeAddress = async () => {
+    const result = await geocodeAddress(newLocation.address)
+    if (result) {
+      setNewLocation({
+        ...newLocation,
+        latitude: result.latitude,
+        longitude: result.longitude
+      })
+      setAuthMessage({ type: 'success', text: '✅ Koordinaten gefunden!' })
+    }
+  }
+
+  const createOrUpdateLocation = async () => {
+    if (!newLocation.name.trim()) {
+      setAuthMessage({ type: 'error', text: '❌ Bitte einen Namen eingeben!' })
+      return
+    }
+
+    if (!newLocation.latitude || !newLocation.longitude) {
+      setAuthMessage({ type: 'error', text: '❌ Bitte Koordinaten festlegen (Geocode-Button klicken)!' })
+      return
+    }
+
+    if (!currentTrip) {
+      setAuthMessage({ type: 'error', text: '❌ Keine Reise ausgewählt!' })
+      return
+    }
+
+    setLoadingAction(true)
+    try {
+      const locationData = {
+        trip_id: currentTrip.id,
+        name: newLocation.name.trim(),
+        address: newLocation.address.trim(),
+        latitude: newLocation.latitude,
+        longitude: newLocation.longitude,
+        type: newLocation.type,
+        notes: newLocation.notes.trim()
+      }
+
+      if (editingLocation) {
+        const { error } = await supabase
+          .from('locations')
+          .update(locationData)
+          .eq('id', editingLocation.id)
+
+        if (error) throw error
+        setAuthMessage({ type: 'success', text: '✅ Location aktualisiert!' })
+      } else {
+        const { error } = await supabase
+          .from('locations')
+          .insert(locationData)
+
+        if (error) throw error
+        setAuthMessage({ type: 'success', text: '✅ Location hinzugefügt!' })
+      }
+
+      await loadLocations(currentTrip.id)
+      setShowLocationModal(false)
+      setEditingLocation(null)
+      setNewLocation({
+        name: '',
+        address: '',
+        latitude: 0,
+        longitude: 0,
+        type: '🏨 Hotel',
+        notes: ''
+      })
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    } finally {
+      setLoadingAction(false)
+    }
+  }
+
+  const deleteLocation = async (locationId: string) => {
+    if (!confirm('Möchtest du diese Location wirklich löschen?')) return
+
+    try {
+      const { error } = await supabase
+        .from('locations')
+        .delete()
+        .eq('id', locationId)
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Location gelöscht!' })
+      await loadLocations(currentTrip.id)
+      if (selectedLocation?.id === locationId) {
+        setSelectedLocation(null)
+      }
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    }
+  }
+
+  const getLocationsByType = () => {
+    const grouped: { [key: string]: any[] } = {}
+    
+    locations.forEach(location => {
+      if (!grouped[location.type]) {
+        grouped[location.type] = []
+      }
+      grouped[location.type].push(location)
+    })
+    
+    return grouped
+  }
+
+  const getCenterCoordinates = () => {
+    if (locations.length === 0) {
+      // Default center (Europe)
+      return { lat: 48.8566, lng: 2.3522 } // Paris
+    }
+
+    const avgLat = locations.reduce((sum, loc) => sum + loc.latitude, 0) / locations.length
+    const avgLng = locations.reduce((sum, loc) => sum + loc.longitude, 0) / locations.length
+
+    return { lat: avgLat, lng: avgLng }
+  }
+
   // ========== EFFECT HOOKS ==========
   useEffect(() => {
     if (currentTrip) {
@@ -880,6 +1080,7 @@ export default function TravelTrackerApp() {
       loadExpenses(currentTrip.id)
       loadPackingItems(currentTrip.id)
       loadItineraryItems(currentTrip.id)
+      loadLocations(currentTrip.id)
     }
   }, [currentTrip])
 
@@ -1613,6 +1814,278 @@ export default function TravelTrackerApp() {
     )
   }
 
+  const renderMapTab = () => {
+    if (!currentTrip) {
+      return (
+        <div className="text-center py-12">
+          <p className="text-gray-600">Bitte wähle zuerst eine Reise aus</p>
+        </div>
+      )
+    }
+
+    const groupedLocations = getLocationsByType()
+    const center = getCenterCoordinates()
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold">Karte & Locations</h2>
+          <button
+            onClick={() => {
+              setEditingLocation(null)
+              setNewLocation({
+                name: '',
+                address: '',
+                latitude: center.lat,
+                longitude: center.lng,
+                type: '🏨 Hotel',
+                notes: ''
+              })
+              setShowLocationModal(true)
+            }}
+            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+          >
+            + Location hinzufügen
+          </button>
+        </div>
+
+        {/* Map Display (Simplified - using OpenStreetMap iframe) */}
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <div className="relative" style={{ height: '500px' }}>
+            {locations.length === 0 ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                <div className="text-center">
+                  <span className="text-6xl mb-4 block">🗺️</span>
+                  <p className="text-gray-600 mb-4">Noch keine Locations auf der Karte</p>
+                  <button
+                    onClick={() => {
+                      setEditingLocation(null)
+                      setNewLocation({
+                        name: '',
+                        address: '',
+                        latitude: center.lat,
+                        longitude: center.lng,
+                        type: '🏨 Hotel',
+                        notes: ''
+                      })
+                      setShowLocationModal(true)
+                    }}
+                    className="px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+                  >
+                    Erste Location hinzufügen
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="h-full">
+                {/* Simple static map with markers */}
+                <div className="relative h-full bg-gray-100">
+                  {/* Map Info */}
+                  <div className="absolute top-4 left-4 bg-white rounded-lg shadow-lg p-4 z-10 max-w-xs">
+                    <h3 className="font-semibold mb-2">📍 {locations.length} Locations</h3>
+                    <p className="text-sm text-gray-600">
+                      Zentrum: {center.lat.toFixed(4)}, {center.lng.toFixed(4)}
+                    </p>
+                    <a
+                      href={`https://www.openstreetmap.org/?mlat=${center.lat}&mlon=${center.lng}#map=12/${center.lat}/${center.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-teal-600 hover:text-teal-700 mt-2 inline-block"
+                    >
+                      🗺️ In OpenStreetMap öffnen →
+                    </a>
+                  </div>
+
+                  {/* Embedded OpenStreetMap */}
+                  <iframe
+                    width="100%"
+                    height="100%"
+                    frameBorder="0"
+                    scrolling="no"
+                    marginHeight={0}
+                    marginWidth={0}
+                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${center.lng-0.1},${center.lat-0.1},${center.lng+0.1},${center.lat+0.1}&layer=mapnik&marker=${center.lat},${center.lng}`}
+                    style={{ border: 0 }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Locations List by Type */}
+        {locations.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Object.entries(groupedLocations).map(([type, locs]) => {
+              const typeInfo = locationTypes.find(t => t.id === type)
+              const icon = typeInfo?.icon || '📍'
+              const color = typeInfo?.color || '#6b7280'
+
+              return (
+                <div key={type} className="bg-white rounded-lg shadow">
+                  <div 
+                    className="p-4 border-b flex items-center gap-2"
+                    style={{ borderLeftWidth: '4px', borderLeftColor: color }}
+                  >
+                    <span className="text-2xl">{icon}</span>
+                    <div>
+                      <h3 className="font-semibold">{typeInfo?.label || type}</h3>
+                      <p className="text-sm text-gray-600">{locs.length} Location(s)</p>
+                    </div>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    {locs.map((location) => (
+                      <div
+                        key={location.id}
+                        className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                        onClick={() => setSelectedLocation(location)}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h4 className="font-medium">{location.name}</h4>
+                            {location.address && (
+                              <p className="text-sm text-gray-600 mt-1">
+                                📍 {location.address}
+                              </p>
+                            )}
+                            <p className="text-xs text-gray-500 mt-1">
+                              {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+                            </p>
+                          </div>
+                          <div className="flex gap-2 flex-shrink-0 ml-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingLocation(location)
+                                setNewLocation({
+                                  name: location.name,
+                                  address: location.address || '',
+                                  latitude: location.latitude,
+                                  longitude: location.longitude,
+                                  type: location.type,
+                                  notes: location.notes || ''
+                                })
+                                setShowLocationModal(true)
+                              }}
+                              className="p-1 hover:bg-white rounded"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                deleteLocation(location.id)
+                              }}
+                              className="p-1 hover:bg-red-100 rounded text-red-600"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                        {location.notes && (
+                          <p className="text-sm text-gray-600 mt-2 pt-2 border-t">
+                            💬 {location.notes}
+                          </p>
+                        )}
+                        <div className="flex gap-2 mt-2">
+                          <a
+                            href={`https://www.google.com/maps?q=${location.latitude},${location.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:text-blue-700"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Google Maps →
+                          </a>
+                          <a
+                            href={`https://www.openstreetmap.org/?mlat=${location.latitude}&mlon=${location.longitude}#map=16/${location.latitude}/${location.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-green-600 hover:text-green-700"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            OpenStreetMap →
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Selected Location Details Modal */}
+        {selectedLocation && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-xl font-bold flex items-center gap-2">
+                    {locationTypes.find(t => t.id === selectedLocation.type)?.icon || '📍'}
+                    {selectedLocation.name}
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {locationTypes.find(t => t.id === selectedLocation.type)?.label}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedLocation(null)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {selectedLocation.address && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Adresse:</p>
+                    <p className="text-sm">{selectedLocation.address}</p>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Koordinaten:</p>
+                  <p className="text-sm font-mono">
+                    {selectedLocation.latitude.toFixed(6)}, {selectedLocation.longitude.toFixed(6)}
+                  </p>
+                </div>
+
+                {selectedLocation.notes && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Notizen:</p>
+                    <p className="text-sm whitespace-pre-wrap">{selectedLocation.notes}</p>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-3 border-t">
+                  <a
+                    href={`https://www.google.com/maps?q=${selectedLocation.latitude},${selectedLocation.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white text-center rounded-lg hover:bg-blue-700 text-sm"
+                  >
+                    Google Maps öffnen
+                  </a>
+                  <a
+                    href={`https://www.openstreetmap.org/?mlat=${selectedLocation.latitude}&mlon=${selectedLocation.longitude}#map=16/${selectedLocation.latitude}/${selectedLocation.longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 px-4 py-2 bg-green-600 text-white text-center rounded-lg hover:bg-green-700 text-sm"
+                  >
+                    OpenStreetMap öffnen
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const renderAdminTab = () => {
     if (currentUser?.role !== 'admin') {
       return (
@@ -1721,6 +2194,8 @@ export default function TravelTrackerApp() {
         return renderItineraryTab()
       case 'packing':
         return renderPackingTab()
+      case 'map':
+        return renderMapTab()
       case 'admin':
         return renderAdminTab()
       default:
@@ -2291,6 +2766,152 @@ export default function TravelTrackerApp() {
     )
   }
 
+  const renderLocationModal = () => {
+    if (!showLocationModal) return null
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <h3 className="text-xl font-bold mb-4">
+            {editingLocation ? 'Location bearbeiten' : 'Neue Location'}
+          </h3>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">Typ</label>
+              <select
+                value={newLocation.type}
+                onChange={(e) => setNewLocation({...newLocation, type: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+              >
+                {locationTypes.map(type => (
+                  <option key={type.id} value={type.id}>
+                    {type.icon} {type.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Name *</label>
+              <input 
+                type="text"
+                placeholder="z.B. Hotel Colosseo"
+                value={newLocation.name}
+                onChange={(e) => setNewLocation({...newLocation, name: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Adresse</label>
+              <div className="flex gap-2">
+                <input 
+                  type="text"
+                  placeholder="z.B. Via Cavour 35, Rom"
+                  value={newLocation.address}
+                  onChange={(e) => setNewLocation({...newLocation, address: e.target.value})}
+                  className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                />
+                <button
+                  onClick={handleGeocodeAddress}
+                  disabled={isGeocoding || !newLocation.address.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {isGeocoding ? '...' : '🌍 Geocode'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Geocode findet automatisch die Koordinaten
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Breitengrad *</label>
+                <input 
+                  type="number"
+                  step="any"
+                  placeholder="z.B. 41.8902"
+                  value={newLocation.latitude || ''}
+                  onChange={(e) => setNewLocation({...newLocation, latitude: parseFloat(e.target.value) || 0})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Längengrad *</label>
+                <input 
+                  type="number"
+                  step="any"
+                  placeholder="z.B. 12.4922"
+                  value={newLocation.longitude || ''}
+                  onChange={(e) => setNewLocation({...newLocation, longitude: parseFloat(e.target.value) || 0})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Notizen</label>
+              <textarea 
+                placeholder="Optionale Notizen zur Location..."
+                value={newLocation.notes}
+                onChange={(e) => setNewLocation({...newLocation, notes: e.target.value})}
+                rows={3}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+
+            {newLocation.latitude !== 0 && newLocation.longitude !== 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-sm text-blue-800">
+                  📍 Koordinaten gesetzt: {newLocation.latitude.toFixed(4)}, {newLocation.longitude.toFixed(4)}
+                </p>
+                <a
+                  href={`https://www.openstreetmap.org/?mlat=${newLocation.latitude}&mlon=${newLocation.longitude}#map=16/${newLocation.latitude}/${newLocation.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-blue-600 hover:text-blue-700 mt-1 inline-block"
+                >
+                  Auf Karte ansehen →
+                </a>
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button 
+              onClick={() => {
+                setShowLocationModal(false)
+                setEditingLocation(null)
+                setNewLocation({
+                  name: '',
+                  address: '',
+                  latitude: 0,
+                  longitude: 0,
+                  type: '🏨 Hotel',
+                  notes: ''
+                })
+              }}
+              className="flex-1 px-6 py-2 border rounded-lg hover:bg-gray-50"
+            >
+              Abbrechen
+            </button>
+            <button 
+              onClick={createOrUpdateLocation}
+              disabled={loadingAction}
+              className="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700"
+            >
+              {loadingAction ? 'Speichere...' : (editingLocation ? 'Aktualisieren' : 'Hinzufügen')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const renderInviteModal = () => {
     if (!showInviteModal) return null
 
@@ -2591,6 +3212,7 @@ export default function TravelTrackerApp() {
       {renderExpenseModal()}
       {renderItineraryModal()}
       {renderPackingModal()}
+      {renderLocationModal()}
     </div>
   )
 }
