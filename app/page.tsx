@@ -757,7 +757,8 @@ export default function TravelTrackerApp() {
       
       // Set selected day to first day with items, or day 1
       if (data && data.length > 0) {
-        const days = [...new Set(data.map(item => item.day))].sort((a, b) => a - b)
+        const uniqueDays = new Set(data.map(item => item.day))
+        const days = Array.from(uniqueDays).sort((a, b) => a - b)
         setSelectedDay(days[0])
       }
     } catch (error) {
