@@ -486,12 +486,118 @@ export default function TravelTrackerApp() {
       setAuthMessage({ type: 'success', text: '✅ Einladung versendet!' })
       setShowInviteModal(false)
       setInviteEmail('')
+      await loadPendingInvitations(currentTrip.id)
     } catch (error: any) {
       setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
     } finally {
       setLoadingAction(false)
     }
   }
+
+  const loadPendingInvitations = async (tripId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('invitations')
+        .select(`
+          *,
+          inviter:users!invited_by(name, email)
+        `)
+        .eq('trip_id', tripId)
+        .eq('status', 'pending')
+        .gt('expires_at', new Date().toISOString())
+
+      if (error) throw error
+      setPendingInvitations(data || [])
+    } catch (error) {
+      console.error('Error loading invitations:', error)
+    }
+  }
+
+  const cancelInvitation = async (invitationId: string) => {
+    if (!confirm('Möchtest du diese Einladung wirklich zurückziehen?')) return
+
+    try {
+      const { error } = await supabase
+        .from('invitations')
+        .delete()
+        .eq('id', invitationId)
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Einladung zurückgezogen!' })
+      await loadPendingInvitations(currentTrip.id)
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    }
+  }
+
+  const removeMember = async (memberId: string, memberName: string) => {
+    if (!confirm(`Möchtest du ${memberName} wirklich aus dem Trip entfernen?`)) return
+
+    try {
+      const { error } = await supabase
+        .from('trip_members')
+        .delete()
+        .eq('id', memberId)
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Mitglied entfernt!' })
+      await loadTripMembers(currentTrip.id)
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    }
+  }
+
+  const updateMemberRole = async (memberId: string, newRole: string) => {
+    try {
+      const { error } = await supabase
+        .from('trip_members')
+        .update({ role: newRole })
+        .eq('id', memberId)
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Rolle aktualisiert!' })
+      await loadTripMembers(currentTrip.id)
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    }
+  }
+
+  const getMemberRoleBadgeColor = (role: string) => {
+    switch (role) {
+      case 'owner':
+        return 'bg-purple-100 text-purple-700'
+      case 'admin':
+        return 'bg-blue-100 text-blue-700'
+      case 'member':
+        return 'bg-gray-100 text-gray-700'
+      default:
+        return 'bg-gray-100 text-gray-700'
+    }
+  }
+
+  const getMemberRoleLabel = (role: string) => {
+    switch (role) {
+      case 'owner':
+        return '👑 Owner'
+      case 'admin':
+        return '⭐ Admin'
+      case 'member':
+        return '👤 Mitglied'
+      default:
+        return role
+    }
+  }
+
+  const canManageMembers = () => {
+    if (!currentTrip || !tripMembers.length) return false
+    
+    const currentMember = tripMembers.find(m => m.user_id === currentUser?.id)
+    return currentMember && (currentMember.role === 'owner' || currentMember.role === 'admin')
+  }
+
 
   // ========== EXPENSES FUNCTIONS ==========
   const loadExpenses = async (tripId: string) => {
@@ -1081,6 +1187,7 @@ export default function TravelTrackerApp() {
       loadPackingItems(currentTrip.id)
       loadItineraryItems(currentTrip.id)
       loadLocations(currentTrip.id)
+      loadPendingInvitations(currentTrip.id)
     }
   }, [currentTrip])
 
@@ -2086,6 +2193,213 @@ export default function TravelTrackerApp() {
     )
   }
 
+  const renderTeamTab = () => {
+    if (!currentTrip) {
+      return (
+        <div className="text-center py-12">
+          <p className="text-gray-600">Bitte wähle zuerst eine Reise aus</p>
+        </div>
+      )
+    }
+
+    const currentMember = tripMembers.find(m => m.user_id === currentUser?.id)
+    const isOwnerOrAdmin = currentMember && (currentMember.role === 'owner' || currentMember.role === 'admin')
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold">Team-Verwaltung</h2>
+          {isOwnerOrAdmin && (
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+            >
+              + Mitglied einladen
+            </button>
+          )}
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-3xl">👥</span>
+              <span className="text-sm text-gray-600">Mitglieder</span>
+            </div>
+            <div className="text-2xl font-bold">{tripMembers.length}</div>
+            <div className="text-sm text-gray-600 mt-1">
+              Aktive Teilnehmer
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-3xl">📧</span>
+              <span className="text-sm text-gray-600">Einladungen</span>
+            </div>
+            <div className="text-2xl font-bold">{pendingInvitations.length}</div>
+            <div className="text-sm text-gray-600 mt-1">
+              Ausstehend
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-3xl">⭐</span>
+              <span className="text-sm text-gray-600">Admins</span>
+            </div>
+            <div className="text-2xl font-bold">
+              {tripMembers.filter(m => m.role === 'owner' || m.role === 'admin').length}
+            </div>
+            <div className="text-sm text-gray-600 mt-1">
+              Verwalter
+            </div>
+          </div>
+        </div>
+
+        {/* Team Members List */}
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-6 border-b">
+            <h3 className="font-semibold text-lg">Team-Mitglieder</h3>
+          </div>
+          <div className="p-6">
+            {tripMembers.length === 0 ? (
+              <div className="text-center py-12">
+                <span className="text-6xl mb-4 block">👥</span>
+                <p className="text-gray-600">Noch keine Mitglieder</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {tripMembers.map((member) => (
+                  <div
+                    key={member.id}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                  >
+                    <div className="flex items-center gap-4">
+                      {/* Avatar */}
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-white font-bold text-lg">
+                        {member.user?.name?.charAt(0).toUpperCase() || '?'}
+                      </div>
+
+                      {/* User Info */}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{member.user?.name || 'Unknown'}</span>
+                          {member.user_id === currentUser?.id && (
+                            <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded">
+                              Du
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-600">{member.user?.email}</div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Beigetreten: {new Date(member.joined_at).toLocaleDateString('de-DE')}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Role & Actions */}
+                    <div className="flex items-center gap-3">
+                      {/* Role Badge */}
+                      {isOwnerOrAdmin && member.user_id !== currentUser?.id && member.role !== 'owner' ? (
+                        <select
+                          value={member.role}
+                          onChange={(e) => updateMemberRole(member.id, e.target.value)}
+                          className={`px-3 py-1 rounded text-sm font-medium ${getMemberRoleBadgeColor(member.role)}`}
+                        >
+                          <option value="admin">⭐ Admin</option>
+                          <option value="member">👤 Mitglied</option>
+                        </select>
+                      ) : (
+                        <span className={`px-3 py-1 rounded text-sm font-medium ${getMemberRoleBadgeColor(member.role)}`}>
+                          {getMemberRoleLabel(member.role)}
+                        </span>
+                      )}
+
+                      {/* Remove Button */}
+                      {isOwnerOrAdmin && member.user_id !== currentUser?.id && member.role !== 'owner' && (
+                        <button
+                          onClick={() => removeMember(member.id, member.user?.name || 'Mitglied')}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded"
+                          title="Mitglied entfernen"
+                        >
+                          🗑️
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Pending Invitations */}
+        {isOwnerOrAdmin && pendingInvitations.length > 0 && (
+          <div className="bg-white rounded-lg shadow">
+            <div className="p-6 border-b">
+              <h3 className="font-semibold text-lg">Ausstehende Einladungen</h3>
+            </div>
+            <div className="p-6">
+              <div className="space-y-3">
+                {pendingInvitations.map((invitation) => (
+                  <div
+                    key={invitation.id}
+                    className="flex items-center justify-between p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
+                  >
+                    <div>
+                      <div className="font-medium">{invitation.invited_email}</div>
+                      <div className="text-sm text-gray-600">
+                        Eingeladen von: {invitation.inviter?.name || 'Unknown'}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Läuft ab: {new Date(invitation.expires_at).toLocaleDateString('de-DE')}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Token: {invitation.token.substring(0, 20)}...
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded text-sm">
+                        ⏳ Ausstehend
+                      </span>
+                      <button
+                        onClick={() => cancelInvitation(invitation.id)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded"
+                        title="Einladung zurückziehen"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Info Box */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 className="font-semibold text-blue-900 mb-2">ℹ️ Team-Rollen:</h4>
+          <ul className="text-sm text-blue-800 space-y-1">
+            <li>• <strong>👑 Owner:</strong> Vollzugriff, kann nicht entfernt werden</li>
+            <li>• <strong>⭐ Admin:</strong> Kann Mitglieder einladen und verwalten</li>
+            <li>• <strong>👤 Mitglied:</strong> Kann Trip anzeigen und bearbeiten</li>
+          </ul>
+        </div>
+
+        {!isOwnerOrAdmin && (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <p className="text-sm text-gray-600">
+              💡 Du hast eingeschränkte Berechtigungen. Kontaktiere einen Admin, um Mitglieder zu verwalten.
+            </p>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const renderAdminTab = () => {
     if (currentUser?.role !== 'admin') {
       return (
@@ -2196,6 +2510,8 @@ export default function TravelTrackerApp() {
         return renderPackingTab()
       case 'map':
         return renderMapTab()
+      case 'friends':
+        return renderTeamTab()
       case 'admin':
         return renderAdminTab()
       default:
