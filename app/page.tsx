@@ -844,6 +844,14 @@ export default function TravelTrackerApp() {
     }
   }, [currentTrip, activeTab])
 
+  // Load data for overview
+  useEffect(() => {
+    if (currentTrip && activeTab === 'overview') {
+      if (expenses.length === 0) loadExpenses(currentTrip.id)
+      if (tripMembers.length === 0) loadTripMembers(currentTrip.id)
+    }
+  }, [currentTrip, activeTab])
+
   // ========== RENDER TABS ==========
   const renderTripsTab = () => (
     <div className="space-y-6">
@@ -947,13 +955,409 @@ export default function TravelTrackerApp() {
     </div>
   )
 
-  const renderOverview = () => (
-    <div className="bg-white rounded-xl p-12 text-center">
-      <div className="text-6xl mb-4">📊</div>
-      <h3 className="text-2xl font-bold mb-2">Übersicht</h3>
-      <p className="text-gray-600">Dashboard kommt bald...</p>
-    </div>
-  )
+  const renderOverview = () => {
+    if (!currentTrip) {
+      return (
+        <div className="bg-white rounded-xl p-12 text-center">
+          <div className="text-6xl mb-4">🌍</div>
+          <h3 className="text-xl font-bold mb-2">Keine Reise ausgewählt</h3>
+          <p className="text-gray-600 mb-6">Wähle eine Reise aus um die Übersicht zu sehen.</p>
+          <button
+            onClick={() => setActiveTab('trips')}
+            className="bg-teal-600 text-white px-6 py-3 rounded-lg hover:bg-teal-700 inline-flex items-center gap-2"
+          >
+            <span>🌍</span>
+            <span>Zu Reisen</span>
+          </button>
+        </div>
+      )
+    }
+
+    // Calculate statistics
+    const totalExpenses = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount), 0)
+    const balances = calculateBalances()
+    const myBalance = balances.find(b => b.user_id === currentUser?.id)
+    
+    // Trip duration
+    const startDate = currentTrip.start_date ? new Date(currentTrip.start_date) : null
+    const endDate = currentTrip.end_date ? new Date(currentTrip.end_date) : null
+    const today = new Date()
+    const daysUntilStart = startDate ? Math.ceil((startDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null
+    const tripDuration = (startDate && endDate) ? Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1 : null
+
+    // Category breakdown
+    const expensesByCategory = expenses.reduce((acc: any, exp) => {
+      acc[exp.category] = (acc[exp.category] || 0) + parseFloat(exp.amount)
+      return acc
+    }, {})
+    const topCategories = Object.entries(expensesByCategory)
+      .sort((a: any, b: any) => b[1] - a[1])
+      .slice(0, 5)
+
+    return (
+      <div className="space-y-6">
+        {/* Trip Header */}
+        <div className="bg-gradient-to-br from-blue-500 to-teal-600 rounded-xl p-8 text-white">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-5xl">{currentTrip.flag}</span>
+                <div>
+                  <h1 className="text-3xl font-bold">{currentTrip.name}</h1>
+                  <p className="text-blue-100 text-lg">{currentTrip.destination}</p>
+                </div>
+              </div>
+              
+              {(startDate || endDate) && (
+                <div className="mt-4 flex items-center gap-6 text-blue-100">
+                  {startDate && (
+                    <div>
+                      <div className="text-xs uppercase tracking-wide">Start</div>
+                      <div className="text-white font-semibold">
+                        {startDate.toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </div>
+                    </div>
+                  )}
+                  {endDate && (
+                    <div>
+                      <div className="text-xs uppercase tracking-wide">Ende</div>
+                      <div className="text-white font-semibold">
+                        {endDate.toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </div>
+                    </div>
+                  )}
+                  {tripDuration && (
+                    <div>
+                      <div className="text-xs uppercase tracking-wide">Dauer</div>
+                      <div className="text-white font-semibold">{tripDuration} Tage</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {daysUntilStart !== null && daysUntilStart > 0 && (
+                <div className="mt-3 inline-block bg-white/20 backdrop-blur-sm px-4 py-2 rounded-lg">
+                  <span className="text-white font-medium">
+                    ⏰ Noch {daysUntilStart} {daysUntilStart === 1 ? 'Tag' : 'Tage'} bis zum Start
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="text-right">
+              <div className="text-sm text-blue-100">Status</div>
+              <div className={`inline-block px-4 py-2 rounded-lg font-semibold ${
+                currentTrip.status === 'active' 
+                  ? 'bg-green-400 text-green-900' 
+                  : 'bg-gray-300 text-gray-700'
+              }`}>
+                {currentTrip.status === 'active' ? '✅ Aktiv' : '📦 Archiviert'}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Key Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Total Expenses */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-600 text-sm">Ausgaben</span>
+              <span className="text-2xl">💰</span>
+            </div>
+            <div className="text-2xl font-bold text-gray-900">
+              {new Intl.NumberFormat('de-DE', { 
+                style: 'currency', 
+                currency: currentTrip.currency 
+              }).format(totalExpenses)}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">{expenses.length} Transaktionen</div>
+          </div>
+
+          {/* My Balance */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-600 text-sm">Mein Saldo</span>
+              <span className="text-2xl">
+                {myBalance && myBalance.balance > 0.01 ? '💰' : 
+                 myBalance && myBalance.balance < -0.01 ? '📉' : '✅'}
+              </span>
+            </div>
+            <div className={`text-2xl font-bold ${
+              myBalance && myBalance.balance > 0.01 ? 'text-green-600' :
+              myBalance && myBalance.balance < -0.01 ? 'text-red-600' :
+              'text-gray-600'
+            }`}>
+              {myBalance ? (
+                <>
+                  {myBalance.balance > 0.01 && '+'}
+                  {new Intl.NumberFormat('de-DE', { 
+                    style: 'currency', 
+                    currency: currentTrip.currency 
+                  }).format(myBalance.balance)}
+                </>
+              ) : '—'}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">
+              {myBalance && myBalance.balance > 0.01 ? 'Du bekommst Geld' :
+               myBalance && myBalance.balance < -0.01 ? 'Du schuldest Geld' :
+               'Ausgeglichen'}
+            </div>
+          </div>
+
+          {/* Team */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-600 text-sm">Team</span>
+              <span className="text-2xl">👥</span>
+            </div>
+            <div className="text-2xl font-bold text-gray-900">{tripMembers.length}</div>
+            <div className="text-xs text-gray-500 mt-1">Mitglieder</div>
+          </div>
+
+          {/* Per Person */}
+          <div className="bg-white rounded-xl p-6 shadow-sm border">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-600 text-sm">Pro Person</span>
+              <span className="text-2xl">👤</span>
+            </div>
+            <div className="text-2xl font-bold text-gray-900">
+              {new Intl.NumberFormat('de-DE', { 
+                style: 'currency', 
+                currency: currentTrip.currency 
+              }).format(tripMembers.length > 0 ? totalExpenses / tripMembers.length : 0)}
+            </div>
+            <div className="text-xs text-gray-500 mt-1">Durchschnitt</div>
+          </div>
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Category Breakdown */}
+          <div className="bg-white rounded-xl shadow-sm border">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-xl font-bold">📊 Ausgaben nach Kategorie</h3>
+            </div>
+            
+            {topCategories.length === 0 ? (
+              <div className="p-12 text-center">
+                <div className="text-4xl mb-2">💰</div>
+                <p className="text-gray-600 text-sm">Noch keine Ausgaben erfasst</p>
+              </div>
+            ) : (
+              <div className="p-6">
+                <div className="space-y-4">
+                  {topCategories.map(([category, amount]: [string, any]) => {
+                    const percentage = (amount / totalExpenses) * 100
+                    return (
+                      <div key={category}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">{category.split(' ')[0]}</span>
+                            <span className="text-sm font-medium text-gray-700">
+                              {category.replace(/^[^\s]+ /, '')}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-bold text-gray-900">
+                              {new Intl.NumberFormat('de-DE', { 
+                                style: 'currency', 
+                                currency: currentTrip.currency 
+                              }).format(amount)}
+                            </div>
+                            <div className="text-xs text-gray-500">{percentage.toFixed(0)}%</div>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-teal-600 h-2 rounded-full transition-all"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Team Members */}
+          <div className="bg-white rounded-xl shadow-sm border">
+            <div className="p-6 border-b border-gray-100">
+              <h3 className="text-xl font-bold">👥 Team Mitglieder</h3>
+            </div>
+            
+            {tripMembers.length === 0 ? (
+              <div className="p-12 text-center">
+                <div className="text-4xl mb-2">👥</div>
+                <p className="text-gray-600 text-sm">Noch keine Mitglieder</p>
+              </div>
+            ) : (
+              <div className="p-6">
+                <div className="space-y-3">
+                  {tripMembers.slice(0, 6).map((member) => {
+                    const memberBalance = balances.find(b => b.user_id === member.user_id)
+                    const isCurrentUser = member.user_id === currentUser?.id
+                    
+                    return (
+                      <div key={member.id} className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            memberBalance && memberBalance.balance > 0.01
+                              ? 'bg-gradient-to-br from-green-400 to-green-500'
+                              : memberBalance && memberBalance.balance < -0.01
+                              ? 'bg-gradient-to-br from-red-400 to-red-500'
+                              : 'bg-gradient-to-br from-blue-400 to-teal-500'
+                          }`}>
+                            <span className="text-white font-bold text-sm">
+                              {member.user?.name?.charAt(0).toUpperCase() || '?'}
+                            </span>
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900 text-sm">
+                                {member.user?.name || 'Unbekannt'}
+                              </span>
+                              {isCurrentUser && (
+                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                                  Du
+                                </span>
+                              )}
+                            </div>
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              member.role === 'owner' ? 'bg-purple-100 text-purple-700' :
+                              member.role === 'admin' ? 'bg-blue-100 text-blue-700' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              {member.role === 'owner' ? '👑 Owner' :
+                               member.role === 'admin' ? '⭐ Admin' :
+                               '👤 Member'}
+                            </span>
+                          </div>
+                        </div>
+                        {memberBalance && (
+                          <div className={`text-sm font-bold ${
+                            memberBalance.balance > 0.01 ? 'text-green-600' :
+                            memberBalance.balance < -0.01 ? 'text-red-600' :
+                            'text-gray-600'
+                          }`}>
+                            {memberBalance.balance > 0.01 && '+'}
+                            {new Intl.NumberFormat('de-DE', { 
+                              style: 'currency', 
+                              currency: currentTrip.currency 
+                            }).format(memberBalance.balance)}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {tripMembers.length > 6 && (
+                    <button
+                      onClick={() => setActiveTab('friends')}
+                      className="w-full text-sm text-teal-600 hover:text-teal-700 font-medium pt-2"
+                    >
+                      +{tripMembers.length - 6} weitere anzeigen
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="bg-white rounded-xl shadow-sm border p-6">
+          <h3 className="text-xl font-bold mb-4">⚡ Schnellzugriff</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <button
+              onClick={() => {
+                setActiveTab('expenses')
+                setTimeout(() => {
+                  resetExpenseForm()
+                  setShowExpenseModal(true)
+                }, 100)
+              }}
+              className="flex flex-col items-center gap-2 p-4 bg-gradient-to-br from-teal-50 to-teal-100 hover:from-teal-100 hover:to-teal-200 rounded-lg transition-all"
+            >
+              <span className="text-3xl">💰</span>
+              <span className="text-sm font-medium text-gray-900">Ausgabe hinzufügen</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('expenses')}
+              className="flex flex-col items-center gap-2 p-4 bg-gradient-to-br from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 rounded-lg transition-all"
+            >
+              <span className="text-3xl">📊</span>
+              <span className="text-sm font-medium text-gray-900">Ausgaben ansehen</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('settlement')}
+              className="flex flex-col items-center gap-2 p-4 bg-gradient-to-br from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-200 rounded-lg transition-all"
+            >
+              <span className="text-3xl">💳</span>
+              <span className="text-sm font-medium text-gray-900">Abrechnung</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('friends')}
+              className="flex flex-col items-center gap-2 p-4 bg-gradient-to-br from-green-50 to-green-100 hover:from-green-100 hover:to-green-200 rounded-lg transition-all"
+            >
+              <span className="text-3xl">👥</span>
+              <span className="text-sm font-medium text-gray-900">Team verwalten</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Recent Expenses */}
+        {expenses.length > 0 && (
+          <div className="bg-white rounded-xl shadow-sm border">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-xl font-bold">🕐 Letzte Ausgaben</h3>
+              <button
+                onClick={() => setActiveTab('expenses')}
+                className="text-sm text-teal-600 hover:text-teal-700 font-medium"
+              >
+                Alle anzeigen →
+              </button>
+            </div>
+            <div className="divide-y">
+              {expenses.slice(0, 5).map((expense) => (
+                <div key={expense.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{expense.category.split(' ')[0]}</span>
+                      <div>
+                        <div className="font-medium text-gray-900">{expense.description}</div>
+                        <div className="text-xs text-gray-600">
+                          {expense.payer?.name || 'Unbekannt'} • {new Date(expense.date).toLocaleDateString('de-DE')}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-gray-900">
+                        {new Intl.NumberFormat('de-DE', { 
+                          style: 'currency', 
+                          currency: currentTrip.currency 
+                        }).format(expense.amount)}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {new Intl.NumberFormat('de-DE', { 
+                          style: 'currency', 
+                          currency: currentTrip.currency 
+                        }).format(expense.amount / (expense.split_between?.length || 1))} / Person
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   const renderAdminTab = () => {
     if (currentUser?.role !== 'admin') {
