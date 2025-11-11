@@ -1166,7 +1166,165 @@ export default function TravelTrackerApp() {
     
     return grouped
   }
+// 2️⃣ SCHRITT 2: Settlement-Berechnungsfunktionen hinzufügen
+// Füge diese Funktionen NACH den anderen Helper-Funktionen ein (z.B. nach getLocationsByType):
 
+// Berechne optimale Ausgleichszahlungen
+const calculateSettlements = () => {
+  if (!currentTrip || expenses.length === 0 || tripMembers.length === 0) {
+    return []
+  }
+
+  // Initialize balances for each member
+  const balances: { [key: string]: number } = {}
+  tripMembers.forEach(member => {
+    balances[member.user.name] = 0
+  })
+
+  // Calculate how much each person paid and owes
+  expenses.forEach(expense => {
+    const payer = expense.paid_by
+    const amount = expense.amount
+    const splitCount = expense.split_between.length
+
+    if (splitCount === 0) return
+
+    const sharePerPerson = amount / splitCount
+
+    // Payer gets credit for paying
+    balances[payer] = (balances[payer] || 0) + amount
+
+    // Everyone in split_between owes their share
+    expense.split_between.forEach((person: string) => {
+      balances[person] = (balances[person] || 0) - sharePerPerson
+    })
+  })
+
+  // Create list of debtors (negative balance) and creditors (positive balance)
+  const debtors: Array<{ name: string; amount: number }> = []
+  const creditors: Array<{ name: string; amount: number }> = []
+
+  Object.entries(balances).forEach(([name, balance]) => {
+    if (balance < -0.01) { // Debtor (owes money)
+      debtors.push({ name, amount: Math.abs(balance) })
+    } else if (balance > 0.01) { // Creditor (is owed money)
+      creditors.push({ name, amount: balance })
+    }
+  })
+
+  // Sort for optimal matching
+  debtors.sort((a, b) => b.amount - a.amount)
+  creditors.sort((a, b) => b.amount - a.amount)
+
+  // Calculate optimal transactions
+  const transactions: Array<{ from: string; to: string; amount: number }> = []
+  let i = 0
+  let j = 0
+
+  while (i < debtors.length && j < creditors.length) {
+    const debtor = debtors[i]
+    const creditor = creditors[j]
+
+    const settleAmount = Math.min(debtor.amount, creditor.amount)
+
+    if (settleAmount > 0.01) {
+      transactions.push({
+        from: debtor.name,
+        to: creditor.name,
+        amount: settleAmount
+      })
+    }
+
+    debtor.amount -= settleAmount
+    creditor.amount -= settleAmount
+
+    if (debtor.amount < 0.01) i++
+    if (creditor.amount < 0.01) j++
+  }
+
+  return transactions
+}
+
+// Berechne Balance für eine Person
+const getPersonBalance = (personName: string) => {
+  let balance = 0
+
+  expenses.forEach(expense => {
+    const amount = expense.amount
+    const splitCount = expense.split_between.length
+
+    if (splitCount === 0) return
+
+    const sharePerPerson = amount / splitCount
+
+    // If this person paid
+    if (expense.paid_by === personName) {
+      balance += amount
+    }
+
+    // If this person owes
+    if (expense.split_between.includes(personName)) {
+      balance -= sharePerPerson
+    }
+  })
+
+  return balance
+}
+
+// Berechne Gesamt-Statistiken
+const getSettlementStats = () => {
+  const stats = {
+    totalPaid: 0,
+    totalOwed: 0,
+    totalSettled: 0,
+    personStats: [] as Array<{
+      name: string
+      paid: number
+      owed: number
+      balance: number
+    }>
+  }
+
+  tripMembers.forEach(member => {
+    const name = member.user.name
+    let paid = 0
+    let owed = 0
+
+    expenses.forEach(expense => {
+      const amount = expense.amount
+      const splitCount = expense.split_between.length
+
+      if (splitCount === 0) return
+
+      const sharePerPerson = amount / splitCount
+
+      if (expense.paid_by === name) {
+        paid += amount
+      }
+
+      if (expense.split_between.includes(name)) {
+        owed += sharePerPerson
+      }
+    })
+
+    const balance = paid - owed
+
+    stats.personStats.push({
+      name,
+      paid,
+      owed,
+      balance
+    })
+
+    stats.totalPaid += paid
+    stats.totalOwed += owed
+  })
+
+  return stats
+}
+
+
+  
   const getCenterCoordinates = () => {
     if (locations.length === 0) {
       // Default center (Europe)
@@ -2399,7 +2557,255 @@ export default function TravelTrackerApp() {
       </div>
     )
   }
+// Füge diese Funktion VOR renderTabContent() ein (z.B. nach renderAdminTab):
 
+const renderSettlementTab = () => {
+  if (!currentTrip) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-600">Bitte wähle zuerst eine Reise aus</p>
+      </div>
+    )
+  }
+
+  if (expenses.length === 0) {
+    return (
+      <div className="text-center py-12 bg-white rounded-lg shadow">
+        <span className="text-6xl mb-4 block">💳</span>
+        <p className="text-gray-600 mb-2">Noch keine Ausgaben vorhanden</p>
+        <p className="text-sm text-gray-500">Füge zuerst Ausgaben hinzu, um Abrechnungen zu sehen</p>
+      </div>
+    )
+  }
+
+  const settlements = calculateSettlements()
+  const stats = getSettlementStats()
+  const totalExpenses = getTotalExpenses()
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Abrechnung & Ausgleich</h2>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              setEditingExpense(null)
+              setNewExpense({
+                category: '🍕 Essen & Trinken',
+                description: '',
+                amount: '',
+                paid_by: currentUser?.name || '',
+                split_between: tripMembers.map(m => m.user.name),
+                date: new Date().toISOString().split('T')[0]
+              })
+              setShowExpenseModal(true)
+            }}
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+          >
+            💰 Ausgabe hinzufügen
+          </button>
+        </div>
+      </div>
+
+      {/* Overview Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-3xl">💰</span>
+            <span className="text-sm text-gray-600">Gesamt</span>
+          </div>
+          <div className="text-2xl font-bold">{totalExpenses.toFixed(2)} {currentTrip.currency}</div>
+          <div className="text-sm text-gray-600 mt-1">
+            {expenses.length} Ausgaben
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-3xl">👥</span>
+            <span className="text-sm text-gray-600">Teilnehmer</span>
+          </div>
+          <div className="text-2xl font-bold">{tripMembers.length}</div>
+          <div className="text-sm text-gray-600 mt-1">
+            Pro Person: {(totalExpenses / tripMembers.length).toFixed(2)} {currentTrip.currency}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-3xl">🔄</span>
+            <span className="text-sm text-gray-600">Transaktionen</span>
+          </div>
+          <div className="text-2xl font-bold">{settlements.length}</div>
+          <div className="text-sm text-gray-600 mt-1">
+            Zum Ausgleich nötig
+          </div>
+        </div>
+      </div>
+
+      {/* Settlement Transactions */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-6 border-b">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-lg">💳 Ausgleichszahlungen</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Optimierte Zahlungen um alle Schulden auszugleichen
+              </p>
+            </div>
+            {settlements.length === 0 && (
+              <span className="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium">
+                ✅ Alles ausgeglichen!
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="p-6">
+          {settlements.length === 0 ? (
+            <div className="text-center py-8">
+              <span className="text-6xl mb-4 block">🎉</span>
+              <p className="text-lg font-semibold text-gray-900 mb-2">Perfekt ausgeglichen!</p>
+              <p className="text-gray-600">Alle Ausgaben sind fair verteilt. Keine Zahlungen nötig.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {settlements.map((transaction, index) => (
+                <div
+                  key={index}
+                  className="p-4 border-2 border-gray-200 rounded-lg hover:border-teal-300 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4 flex-1">
+                      {/* From Person */}
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-400 to-orange-500 flex items-center justify-center text-white font-bold text-lg">
+                          {transaction.from.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-semibold">{transaction.from}</div>
+                          <div className="text-xs text-gray-500">Zahlt</div>
+                        </div>
+                      </div>
+
+                      {/* Arrow */}
+                      <div className="flex-1 flex items-center justify-center">
+                        <div className="flex flex-col items-center">
+                          <div className="text-2xl">→</div>
+                          <div className="px-3 py-1 bg-teal-100 text-teal-700 rounded-full text-sm font-semibold mt-1">
+                            {transaction.amount.toFixed(2)} {currentTrip.currency}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* To Person */}
+                      <div className="flex items-center gap-3">
+                        <div>
+                          <div className="font-semibold text-right">{transaction.to}</div>
+                          <div className="text-xs text-gray-500 text-right">Erhält</div>
+                        </div>
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-green-400 to-teal-500 flex items-center justify-center text-white font-bold text-lg">
+                          {transaction.to.charAt(0).toUpperCase()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Personal Balances */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-6 border-b">
+          <h3 className="font-semibold text-lg">👤 Persönliche Übersicht</h3>
+          <p className="text-sm text-gray-600 mt-1">
+            Wer hat wie viel gezahlt und wer schuldet wie viel
+          </p>
+        </div>
+        <div className="p-6">
+          <div className="space-y-3">
+            {stats.personStats
+              .sort((a, b) => b.balance - a.balance)
+              .map(person => {
+                const isPositive = person.balance > 0.01
+                const isNegative = person.balance < -0.01
+                const isBalanced = !isPositive && !isNegative
+
+                return (
+                  <div
+                    key={person.name}
+                    className={`p-4 rounded-lg border-2 ${
+                      isPositive
+                        ? 'bg-green-50 border-green-200'
+                        : isNegative
+                        ? 'bg-red-50 border-red-200'
+                        : 'bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${
+                          isPositive
+                            ? 'bg-gradient-to-br from-green-400 to-teal-500'
+                            : isNegative
+                            ? 'bg-gradient-to-br from-red-400 to-orange-500'
+                            : 'bg-gradient-to-br from-gray-400 to-gray-500'
+                        }`}>
+                          {person.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-semibold flex items-center gap-2">
+                            {person.name}
+                            {person.name === currentUser?.name && (
+                              <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded">
+                                Du
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-600 mt-1">
+                            Gezahlt: <strong>{person.paid.toFixed(2)} {currentTrip.currency}</strong> • 
+                            Anteil: <strong>{person.owed.toFixed(2)} {currentTrip.currency}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <div className={`text-2xl font-bold ${
+                          isPositive
+                            ? 'text-green-600'
+                            : isNegative
+                            ? 'text-red-600'
+                            : 'text-gray-600'
+                        }`}>
+                          {isPositive ? '+' : ''}{person.balance.toFixed(2)} {currentTrip.currency}
+                        </div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          {isPositive ? '✅ Bekommt zurück' : isNegative ? '❌ Schuldet' : '✅ Ausgeglichen'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+        </div>
+      </div>
+
+      {/* Info Box */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h4 className="font-semibold text-blue-900 mb-2">ℹ️ So funktioniert die Abrechnung:</h4>
+        <ul className="text-sm text-blue-800 space-y-1">
+          <li>• Alle Ausgaben werden fair nach der Split-Verteilung aufgeteilt</li>
+          <li>• Positive Beträge bedeuten: Diese Person hat mehr gezahlt und bekommt Geld zurück</li>
+          <li>• Negative Beträge bedeuten: Diese Person schuldet noch Geld</li>
+          <li>• Die Ausgleichszahlungen sind optimal minimiert (wenige Transaktionen)</li>
+        </ul>
+      </div>
+    </div>
+  )
+}
   const renderAdminTab = () => {
     if (currentUser?.role !== 'admin') {
       return (
@@ -2496,33 +2902,38 @@ export default function TravelTrackerApp() {
     )
   }
 
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'overview':
-        return renderOverview()
-      case 'trips':
-        return renderTripsTab()
-      case 'expenses':
-        return renderExpensesTab()
-      case 'itinerary':
-        return renderItineraryTab()
-      case 'packing':
-        return renderPackingTab()
-      case 'map':
-        return renderMapTab()
-      case 'friends':
-        return renderTeamTab()
-      case 'admin':
-        return renderAdminTab()
-      default:
-        return (
-          <div className="text-center py-12 bg-white rounded-lg shadow">
-            <span className="text-6xl mb-4 block">🚧</span>
-            <p className="text-gray-600">Dieser Tab ist noch in Entwicklung</p>
-          </div>
-        )
-    }
+// 1️⃣ SCHRITT 1: Settlement-Tab in renderTabContent() hinzufügen
+// Ersetze in der renderTabContent() Funktion (Zeile ~2500):
+
+const renderTabContent = () => {
+  switch (activeTab) {
+    case 'overview':
+      return renderOverview()
+    case 'trips':
+      return renderTripsTab()
+    case 'expenses':
+      return renderExpensesTab()
+    case 'itinerary':
+      return renderItineraryTab()
+    case 'packing':
+      return renderPackingTab()
+    case 'map':
+      return renderMapTab()
+    case 'friends':
+      return renderTeamTab()
+    case 'settlement':  // ⬅️ NEU HINZUFÜGEN!
+      return renderSettlementTab()  // ⬅️ NEU HINZUFÜGEN!
+    case 'admin':
+      return renderAdminTab()
+    default:
+      return (
+        <div className="text-center py-12 bg-white rounded-lg shadow">
+          <span className="text-6xl mb-4 block">🚧</span>
+          <p className="text-gray-600">Dieser Tab ist noch in Entwicklung</p>
+        </div>
+      )
   }
+}
 
   // ========== MODAL COMPONENTS ==========
   const renderNewTripModal = () => {
