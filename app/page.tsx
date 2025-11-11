@@ -89,6 +89,31 @@ export default function TravelTrackerApp() {
     { id: '🎒 Sonstiges', icon: '🎒', label: 'Sonstiges' }
   ]
 
+  // ========== ITINERARY STATE ==========
+  const [itineraryItems, setItineraryItems] = useState<any[]>([])
+  const [showItineraryModal, setShowItineraryModal] = useState(false)
+  const [editingItineraryItem, setEditingItineraryItem] = useState<any>(null)
+  const [selectedDay, setSelectedDay] = useState<number>(1)
+  const [newItineraryItem, setNewItineraryItem] = useState({
+    day: 1,
+    time: '09:00',
+    title: '',
+    details: '',
+    type: '🎯 Aktivität'
+  })
+
+  const itineraryTypes = [
+    { id: '🍳 Frühstück', icon: '🍳', label: 'Frühstück' },
+    { id: '🚗 Transport', icon: '🚗', label: 'Transport' },
+    { id: '🎯 Aktivität', icon: '🎯', label: 'Aktivität' },
+    { id: '🍕 Restaurant', icon: '🍕', label: 'Restaurant' },
+    { id: '🏨 Check-in/out', icon: '🏨', label: 'Check-in/out' },
+    { id: '🛍️ Shopping', icon: '🛍️', label: 'Shopping' },
+    { id: '📸 Sehenswürdigkeit', icon: '📸', label: 'Sehenswürdigkeit' },
+    { id: '💤 Pause', icon: '💤', label: 'Pause' },
+    { id: '📝 Sonstiges', icon: '📝', label: 'Sonstiges' }
+  ]
+
   // ========== AUTH ==========
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -717,12 +742,143 @@ export default function TravelTrackerApp() {
     return grouped
   }
 
+  // ========== ITINERARY FUNCTIONS ==========
+  const loadItineraryItems = async (tripId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('itinerary_items')
+        .select('*')
+        .eq('trip_id', tripId)
+        .order('day', { ascending: true })
+        .order('time', { ascending: true })
+
+      if (error) throw error
+      setItineraryItems(data || [])
+      
+      // Set selected day to first day with items, or day 1
+      if (data && data.length > 0) {
+        const days = [...new Set(data.map(item => item.day))].sort((a, b) => a - b)
+        setSelectedDay(days[0])
+      }
+    } catch (error) {
+      console.error('Error loading itinerary items:', error)
+    }
+  }
+
+  const createOrUpdateItineraryItem = async () => {
+    if (!newItineraryItem.title.trim()) {
+      setAuthMessage({ type: 'error', text: '❌ Bitte einen Titel eingeben!' })
+      return
+    }
+
+    if (!currentTrip) {
+      setAuthMessage({ type: 'error', text: '❌ Keine Reise ausgewählt!' })
+      return
+    }
+
+    setLoadingAction(true)
+    try {
+      const itineraryData = {
+        trip_id: currentTrip.id,
+        day: newItineraryItem.day,
+        time: newItineraryItem.time,
+        title: newItineraryItem.title.trim(),
+        details: newItineraryItem.details.trim(),
+        type: newItineraryItem.type
+      }
+
+      if (editingItineraryItem) {
+        const { error } = await supabase
+          .from('itinerary_items')
+          .update(itineraryData)
+          .eq('id', editingItineraryItem.id)
+
+        if (error) throw error
+        setAuthMessage({ type: 'success', text: '✅ Aktivität aktualisiert!' })
+      } else {
+        const { error } = await supabase
+          .from('itinerary_items')
+          .insert(itineraryData)
+
+        if (error) throw error
+        setAuthMessage({ type: 'success', text: '✅ Aktivität hinzugefügt!' })
+      }
+
+      await loadItineraryItems(currentTrip.id)
+      setShowItineraryModal(false)
+      setEditingItineraryItem(null)
+      setNewItineraryItem({
+        day: selectedDay,
+        time: '09:00',
+        title: '',
+        details: '',
+        type: '🎯 Aktivität'
+      })
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    } finally {
+      setLoadingAction(false)
+    }
+  }
+
+  const deleteItineraryItem = async (itemId: string) => {
+    if (!confirm('Möchtest du diese Aktivität wirklich löschen?')) return
+
+    try {
+      const { error } = await supabase
+        .from('itinerary_items')
+        .delete()
+        .eq('id', itemId)
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: '✅ Aktivität gelöscht!' })
+      await loadItineraryItems(currentTrip.id)
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    }
+  }
+
+  const getItineraryItemsForDay = (day: number) => {
+    return itineraryItems
+      .filter(item => item.day === day)
+      .sort((a, b) => a.time.localeCompare(b.time))
+  }
+
+  const getTripDays = () => {
+    if (!currentTrip || !currentTrip.start_date || !currentTrip.end_date) {
+      return [1, 2, 3] // Default 3 days if no dates set
+    }
+
+    const start = new Date(currentTrip.start_date)
+    const end = new Date(currentTrip.end_date)
+    const diffTime = Math.abs(end.getTime() - start.getTime())
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1 // +1 to include both start and end day
+
+    return Array.from({ length: diffDays }, (_, i) => i + 1)
+  }
+
+  const getDayDate = (day: number) => {
+    if (!currentTrip || !currentTrip.start_date) return null
+    
+    const start = new Date(currentTrip.start_date)
+    const dayDate = new Date(start)
+    dayDate.setDate(start.getDate() + day - 1)
+    
+    return dayDate.toLocaleDateString('de-DE', { 
+      weekday: 'short', 
+      day: '2-digit', 
+      month: '2-digit' 
+    })
+  }
+
   // ========== EFFECT HOOKS ==========
   useEffect(() => {
     if (currentTrip) {
       loadTripMembers(currentTrip.id)
       loadExpenses(currentTrip.id)
       loadPackingItems(currentTrip.id)
+      loadItineraryItems(currentTrip.id)
     }
   }, [currentTrip])
 
@@ -745,6 +901,8 @@ export default function TravelTrackerApp() {
 
     const totalExpenses = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount.toString()), 0)
     const packingProgress = getPackingProgress()
+    const totalActivities = itineraryItems.length
+    const tripDays = getTripDays()
 
     return (
       <div className="space-y-6">
@@ -777,7 +935,7 @@ export default function TravelTrackerApp() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-3xl">💰</span>
@@ -788,6 +946,17 @@ export default function TravelTrackerApp() {
             </div>
             <div className="text-sm text-gray-600 mt-1">
               {expenses.length} Einträge
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-3xl">🗓️</span>
+              <span className="text-sm text-gray-600">Reiseplan</span>
+            </div>
+            <div className="text-2xl font-bold">{totalActivities}</div>
+            <div className="text-sm text-gray-600 mt-1">
+              Aktivitäten • {tripDays.length} Tage
             </div>
           </div>
 
@@ -1255,6 +1424,194 @@ export default function TravelTrackerApp() {
     )
   }
 
+  const renderItineraryTab = () => {
+    if (!currentTrip) {
+      return (
+        <div className="text-center py-12">
+          <p className="text-gray-600">Bitte wähle zuerst eine Reise aus</p>
+        </div>
+      )
+    }
+
+    const tripDays = getTripDays()
+    const dayItems = getItineraryItemsForDay(selectedDay)
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold">Reiseplan</h2>
+          <button
+            onClick={() => {
+              setEditingItineraryItem(null)
+              setNewItineraryItem({
+                day: selectedDay,
+                time: '09:00',
+                title: '',
+                details: '',
+                type: '🎯 Aktivität'
+              })
+              setShowItineraryModal(true)
+            }}
+            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+          >
+            + Aktivität hinzufügen
+          </button>
+        </div>
+
+        {/* Day Selector */}
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {tripDays.map(day => {
+              const dayItemsCount = getItineraryItemsForDay(day).length
+              const dayDate = getDayDate(day)
+              
+              return (
+                <button
+                  key={day}
+                  onClick={() => setSelectedDay(day)}
+                  className={`flex-shrink-0 px-4 py-3 rounded-lg transition-all ${
+                    selectedDay === day
+                      ? 'bg-teal-600 text-white shadow-md'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <div className="text-sm font-semibold">Tag {day}</div>
+                  {dayDate && (
+                    <div className="text-xs opacity-80">{dayDate}</div>
+                  )}
+                  {dayItemsCount > 0 && (
+                    <div className="text-xs mt-1">
+                      {dayItemsCount} {dayItemsCount === 1 ? 'Aktivität' : 'Aktivitäten'}
+                    </div>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Timeline for selected day */}
+        {dayItems.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-lg shadow">
+            <span className="text-6xl mb-4 block">🗓️</span>
+            <p className="text-gray-600 mb-4">Noch keine Aktivitäten für Tag {selectedDay}</p>
+            <button
+              onClick={() => {
+                setEditingItineraryItem(null)
+                setNewItineraryItem({
+                  day: selectedDay,
+                  time: '09:00',
+                  title: '',
+                  details: '',
+                  type: '🎯 Aktivität'
+                })
+                setShowItineraryModal(true)
+              }}
+              className="px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+            >
+              Erste Aktivität hinzufügen
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {dayItems.map((item, index) => {
+              const typeIcon = itineraryTypes.find(t => t.id === item.type)?.icon || '📝'
+              
+              return (
+                <div key={item.id} className="bg-white rounded-lg shadow">
+                  <div className="p-4">
+                    <div className="flex items-start gap-4">
+                      {/* Time column */}
+                      <div className="flex-shrink-0 text-center">
+                        <div className="text-2xl font-bold text-teal-600">
+                          {item.time}
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {index + 1}. Aktivität
+                        </div>
+                      </div>
+
+                      {/* Timeline connector */}
+                      <div className="flex-shrink-0 flex flex-col items-center">
+                        <div className="w-4 h-4 rounded-full bg-teal-600"></div>
+                        {index < dayItems.length - 1 && (
+                          <div className="w-0.5 h-full min-h-[60px] bg-teal-200"></div>
+                        )}
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-2xl">{typeIcon}</span>
+                              <h3 className="font-semibold text-lg">{item.title}</h3>
+                            </div>
+                            {item.details && (
+                              <p className="text-gray-600 text-sm whitespace-pre-wrap">
+                                {item.details}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className="text-xs px-2 py-1 bg-gray-100 rounded">
+                                {item.type}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Action buttons */}
+                          <div className="flex gap-2 flex-shrink-0">
+                            <button
+                              onClick={() => {
+                                setEditingItineraryItem(item)
+                                setNewItineraryItem({
+                                  day: item.day,
+                                  time: item.time,
+                                  title: item.title,
+                                  details: item.details,
+                                  type: item.type
+                                })
+                                setShowItineraryModal(true)
+                              }}
+                              className="p-2 hover:bg-gray-100 rounded"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => deleteItineraryItem(item.id)}
+                              className="p-2 hover:bg-red-100 rounded text-red-600"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Day Summary */}
+        {dayItems.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center justify-between text-sm text-gray-600">
+              <div>
+                <span className="font-semibold">{dayItems.length}</span> Aktivitäten geplant
+              </div>
+              <div>
+                Von <span className="font-semibold">{dayItems[0]?.time}</span> bis{' '}
+                <span className="font-semibold">{dayItems[dayItems.length - 1]?.time}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const renderAdminTab = () => {
     if (currentUser?.role !== 'admin') {
       return (
@@ -1359,6 +1716,8 @@ export default function TravelTrackerApp() {
         return renderTripsTab()
       case 'expenses':
         return renderExpensesTab()
+      case 'itinerary':
+        return renderItineraryTab()
       case 'packing':
         return renderPackingTab()
       case 'admin':
@@ -1819,6 +2178,118 @@ export default function TravelTrackerApp() {
     )
   }
 
+  const renderItineraryModal = () => {
+    if (!showItineraryModal) return null
+
+    const tripDays = getTripDays()
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <h3 className="text-xl font-bold mb-4">
+            {editingItineraryItem ? 'Aktivität bearbeiten' : 'Neue Aktivität'}
+          </h3>
+          
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Tag *</label>
+                <select
+                  value={newItineraryItem.day}
+                  onChange={(e) => setNewItineraryItem({...newItineraryItem, day: parseInt(e.target.value)})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                >
+                  {tripDays.map(day => {
+                    const dayDate = getDayDate(day)
+                    return (
+                      <option key={day} value={day}>
+                        Tag {day} {dayDate ? `(${dayDate})` : ''}
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Uhrzeit *</label>
+                <input 
+                  type="time"
+                  value={newItineraryItem.time}
+                  onChange={(e) => setNewItineraryItem({...newItineraryItem, time: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Typ</label>
+              <select
+                value={newItineraryItem.type}
+                onChange={(e) => setNewItineraryItem({...newItineraryItem, type: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+              >
+                {itineraryTypes.map(type => (
+                  <option key={type.id} value={type.id}>
+                    {type.icon} {type.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Titel *</label>
+              <input 
+                type="text"
+                placeholder="z.B. Frühstück im Hotel"
+                value={newItineraryItem.title}
+                onChange={(e) => setNewItineraryItem({...newItineraryItem, title: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Details/Notizen</label>
+              <textarea 
+                placeholder="Optionale Details zur Aktivität..."
+                value={newItineraryItem.details}
+                onChange={(e) => setNewItineraryItem({...newItineraryItem, details: e.target.value})}
+                rows={4}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            <button 
+              onClick={() => {
+                setShowItineraryModal(false)
+                setEditingItineraryItem(null)
+                setNewItineraryItem({
+                  day: selectedDay,
+                  time: '09:00',
+                  title: '',
+                  details: '',
+                  type: '🎯 Aktivität'
+                })
+              }}
+              className="flex-1 px-6 py-2 border rounded-lg hover:bg-gray-50"
+            >
+              Abbrechen
+            </button>
+            <button 
+              onClick={createOrUpdateItineraryItem}
+              disabled={loadingAction}
+              className="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700"
+            >
+              {loadingAction ? 'Speichere...' : (editingItineraryItem ? 'Aktualisieren' : 'Hinzufügen')}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const renderInviteModal = () => {
     if (!showInviteModal) return null
 
@@ -2117,6 +2588,7 @@ export default function TravelTrackerApp() {
       {renderAddUserModal()}
       {renderInviteModal()}
       {renderExpenseModal()}
+      {renderItineraryModal()}
       {renderPackingModal()}
     </div>
   )
