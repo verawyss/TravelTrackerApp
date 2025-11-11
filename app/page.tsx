@@ -550,25 +550,34 @@ export default function TravelTrackerApp() {
   const loadExpenses = async (tripId: string) => {
     console.log('🔍 Loading expenses for trip:', tripId)
     try {
-      const { data, error } = await supabase
+      // Simplified query - load expenses first
+      const { data: expensesData, error: expensesError } = await supabase
         .from('expenses')
-        .select(`
-          *,
-          user:users!expenses_user_id_fkey(name, email),
-          payer:users!expenses_paid_by_fkey(name, email)
-        `)
+        .select('*')
         .eq('trip_id', tripId)
         .order('date', { ascending: false })
 
-      console.log('📊 Expenses query result:', { data, error })
-      
-      if (error) {
-        console.error('❌ Error loading expenses:', error)
-        throw error
+      if (expensesError) {
+        console.error('❌ Error loading expenses:', expensesError)
+        throw expensesError
       }
-      
-      console.log(`✅ Loaded ${data?.length || 0} expenses`)
-      setExpenses(data || [])
+
+      console.log(`✅ Loaded ${expensesData?.length || 0} expenses`)
+
+      // Then manually add user info from tripMembers
+      const enrichedExpenses = expensesData?.map(expense => {
+        const creator = tripMembers.find(m => m.user_id === expense.user_id)
+        const payer = tripMembers.find(m => m.user_id === expense.paid_by)
+        
+        return {
+          ...expense,
+          user: creator?.user || { name: 'Unbekannt', email: '' },
+          payer: payer?.user || { name: 'Unbekannt', email: '' }
+        }
+      }) || []
+
+      console.log('✅ Enriched expenses with user data')
+      setExpenses(enrichedExpenses)
     } catch (error) {
       console.error('❌ Exception loading expenses:', error)
     }
