@@ -94,6 +94,7 @@ export default function TravelTrackerApp() {
   const [editingExpense, setEditingExpense] = useState<any>(null)
   const [expenseFilter, setExpenseFilter] = useState<string>('all')
   const [newExpense, setNewExpense] = useState({
+    trip_id: '', // NEW: Trip-Zuordnung
     category: '🍕 Essen & Trinken',
     description: '',
     amount: '',
@@ -662,6 +663,11 @@ export default function TravelTrackerApp() {
   }
 
   const createOrUpdateExpense = async () => {
+    if (!newExpense.trip_id) {
+      setAuthMessage({ type: 'error', text: '❌ Bitte eine Reise auswählen!' })
+      return
+    }
+
     if (!newExpense.description || !newExpense.amount || !newExpense.paid_by) {
       setAuthMessage({ type: 'error', text: '❌ Bitte alle Pflichtfelder ausfüllen!' })
       return
@@ -675,7 +681,7 @@ export default function TravelTrackerApp() {
     setLoadingAction(true)
     try {
       const expenseData = {
-        trip_id: currentTrip.id,
+        trip_id: newExpense.trip_id, // Use selected trip instead of currentTrip
         category: newExpense.category,
         description: newExpense.description,
         amount: parseFloat(newExpense.amount),
@@ -702,10 +708,15 @@ export default function TravelTrackerApp() {
         setAuthMessage({ type: 'success', text: '✅ Ausgabe hinzugefügt!' })
       }
 
-      await loadExpenses(currentTrip.id)
+      // Reload expenses for the current trip (if it's the same)
+      if (currentTrip && currentTrip.id === newExpense.trip_id) {
+        await loadExpenses(currentTrip.id)
+      }
+      
       setShowExpenseModal(false)
       setEditingExpense(null)
       setNewExpense({
+        trip_id: currentTrip?.id || '', // Pre-select current trip for next expense
         category: '🍕 Essen & Trinken',
         description: '',
         amount: '',
@@ -1743,6 +1754,7 @@ const getSettlementStats = () => {
               onClick={() => {
                 setEditingExpense(null)
                 setNewExpense({
+                  trip_id: currentTrip?.id || '', // Pre-select current trip
                   category: '🍕 Essen & Trinken',
                   description: '',
                   amount: '',
@@ -1760,27 +1772,29 @@ const getSettlementStats = () => {
         </div>
 
         <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <div className="text-sm text-gray-600">Gesamt</div>
               <div className="text-3xl font-bold">
                 {totalAmount.toFixed(2)} {currentTrip.currency}
               </div>
             </div>
-            <select
-              value={expenseFilter}
-              onChange={(e) => setExpenseFilter(e.target.value)}
-              className="px-4 py-2 border rounded-lg"
-            >
-              <option value="all">Alle Kategorien</option>
-              <option value="🍕 Essen & Trinken">🍕 Essen & Trinken</option>
-              <option value="🏨 Unterkunft">🏨 Unterkunft</option>
-              <option value="🚗 Transport">🚗 Transport</option>
-              <option value="🎟️ Aktivitäten">🎟️ Aktivitäten</option>
-              <option value="🛒 Einkäufe">🛒 Einkäufe</option>
-              <option value="💊 Gesundheit">💊 Gesundheit</option>
-              <option value="📱 Sonstiges">📱 Sonstiges</option>
-            </select>
+            <div className="flex gap-2">
+              <select
+                value={expenseFilter}
+                onChange={(e) => setExpenseFilter(e.target.value)}
+                className="px-4 py-2 border rounded-lg"
+              >
+                <option value="all">Alle Kategorien</option>
+                <option value="🍕 Essen & Trinken">🍕 Essen & Trinken</option>
+                <option value="🏨 Unterkunft">🏨 Unterkunft</option>
+                <option value="🚗 Transport">🚗 Transport</option>
+                <option value="🎟️ Aktivitäten">🎟️ Aktivitäten</option>
+                <option value="🛒 Einkäufe">🛒 Einkäufe</option>
+                <option value="💊 Gesundheit">💊 Gesundheit</option>
+                <option value="📱 Sonstiges">📱 Sonstiges</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -1800,6 +1814,16 @@ const getSettlementStats = () => {
                       <span className="font-semibold">{expense.description}</span>
                     </div>
                     <div className="text-sm text-gray-600 space-y-1">
+                      {/* Show trip info if expense is from different trip */}
+                      {expense.trip_id !== currentTrip?.id && (() => {
+                        const expenseTrip = allUserTrips.find(t => t.id === expense.trip_id)
+                        return expenseTrip ? (
+                          <div className="flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded mb-1 w-fit">
+                            <span>{expenseTrip.flag}</span>
+                            <span className="font-medium">{expenseTrip.name}</span>
+                          </div>
+                        ) : null
+                      })()}
                       <div>💳 Bezahlt von: {expense.paid_by}</div>
                       <div>👥 Geteilt zwischen: {expense.split_between.join(', ')}</div>
                       <div>📅 {new Date(expense.date).toLocaleDateString('de-DE')}</div>
@@ -1807,13 +1831,19 @@ const getSettlementStats = () => {
                   </div>
                   <div className="text-right">
                     <div className="text-2xl font-bold">
-                      {parseFloat(expense.amount.toString()).toFixed(2)} {currentTrip.currency}
+                      {parseFloat(expense.amount.toString()).toFixed(2)} {
+                        (() => {
+                          const expenseTrip = allUserTrips.find(t => t.id === expense.trip_id)
+                          return expenseTrip?.currency || currentTrip?.currency || 'EUR'
+                        })()
+                      }
                     </div>
                     <div className="flex gap-2 mt-2">
                       <button
                         onClick={() => {
                           setEditingExpense(expense)
                           setNewExpense({
+                            trip_id: expense.trip_id, // Use expense's trip_id when editing
                             category: expense.category,
                             description: expense.description,
                             amount: expense.amount.toString(),
@@ -2764,6 +2794,7 @@ const renderSettlementTab = () => {
             onClick={() => {
               setEditingExpense(null)
               setNewExpense({
+                trip_id: currentTrip?.id || '', // Pre-select current trip
                 category: '🍕 Essen & Trinken',
                 description: '',
                 amount: '',
@@ -3481,6 +3512,25 @@ const renderTabContent = () => {
           
           <div className="space-y-4">
             <div>
+              <label className="block text-sm font-medium mb-2">Reise *</label>
+              <select
+                value={newExpense.trip_id}
+                onChange={(e) => setNewExpense({...newExpense, trip_id: e.target.value})}
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="">-- Reise auswählen --</option>
+                {allUserTrips.filter(t => t.status === 'active').map(trip => (
+                  <option key={trip.id} value={trip.id}>
+                    {trip.flag} {trip.name} ({trip.destination})
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Wähle die Reise, zu der diese Ausgabe gehört
+              </p>
+            </div>
+
+            <div>
               <label className="block text-sm font-medium mb-2">Kategorie</label>
               <select
                 value={newExpense.category}
@@ -3509,7 +3559,9 @@ const renderTabContent = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Betrag * ({currentTrip?.currency})</label>
+              <label className="block text-sm font-medium mb-2">
+                Betrag * ({newExpense.trip_id ? allUserTrips.find(t => t.id === newExpense.trip_id)?.currency || 'EUR' : 'EUR'})
+              </label>
               <input 
                 type="number"
                 step="0.01"
