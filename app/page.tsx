@@ -136,6 +136,9 @@ export default function TravelTrackerApp() {
   const [newItineraryItem, setNewItineraryItem] = useState({
     day: 1,
     time: '09:00',
+    time_end: '', // NEW: End time (optional)
+    start_date: '', // NEW: Start date (optional for multi-day activities)
+    end_date: '', // NEW: End date (optional for multi-day activities)
     title: '',
     details: '',
     type: '🎯 Aktivität'
@@ -928,6 +931,9 @@ export default function TravelTrackerApp() {
         trip_id: currentTrip.id,
         day: newItineraryItem.day,
         time: newItineraryItem.time,
+        time_end: newItineraryItem.time_end || null, // NEW: End time (optional)
+        start_date: newItineraryItem.start_date || null, // NEW: Start date (optional)
+        end_date: newItineraryItem.end_date || null, // NEW: End date (optional)
         title: newItineraryItem.title.trim(),
         details: newItineraryItem.details.trim(),
         type: newItineraryItem.type
@@ -956,6 +962,9 @@ export default function TravelTrackerApp() {
       setNewItineraryItem({
         day: selectedDay,
         time: '09:00',
+        time_end: '', // Reset
+        start_date: '', // Reset
+        end_date: '', // Reset
         title: '',
         details: '',
         type: '🎯 Aktivität'
@@ -2195,10 +2204,27 @@ const getSettlementStats = () => {
                       <div className="flex-shrink-0 text-center">
                         <div className="text-2xl font-bold text-teal-600">
                           {item.time}
+                          {item.time_end && (
+                            <>
+                              <br />
+                              <span className="text-sm text-gray-400">bis</span>
+                              <br />
+                              {item.time_end}
+                            </>
+                          )}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
                           {index + 1}. Aktivität
                         </div>
+                        {/* Show date range if end_date exists */}
+                        {item.end_date && (
+                          <div className="text-xs text-blue-600 mt-2 font-medium">
+                            📅 Mehrtägig
+                            <div className="text-xs text-gray-600 mt-0.5">
+                              bis {new Date(item.end_date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' })}
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Timeline connector */}
@@ -2237,6 +2263,9 @@ const getSettlementStats = () => {
                                 setNewItineraryItem({
                                   day: item.day,
                                   time: item.time,
+                                  time_end: item.time_end || '',
+                                  start_date: item.start_date || '',
+                                  end_date: item.end_date || '',
                                   title: item.title,
                                   details: item.details,
                                   type: item.type
@@ -3766,13 +3795,39 @@ const renderTabContent = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium mb-2">Uhrzeit *</label>
+                <label className="block text-sm font-medium mb-2">Von (Uhrzeit) *</label>
                 <input 
                   type="time"
                   value={newItineraryItem.time}
                   onChange={(e) => setNewItineraryItem({...newItineraryItem, time: e.target.value})}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
                 />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Bis (Uhrzeit)</label>
+                <input 
+                  type="time"
+                  value={newItineraryItem.time_end}
+                  onChange={(e) => setNewItineraryItem({...newItineraryItem, time_end: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                  placeholder="Optional"
+                />
+                <p className="text-xs text-gray-500 mt-1">Optional: Endzeit</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Bis (Datum)</label>
+                <input 
+                  type="date"
+                  value={newItineraryItem.end_date}
+                  onChange={(e) => setNewItineraryItem({...newItineraryItem, end_date: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                  placeholder="Optional"
+                />
+                <p className="text-xs text-gray-500 mt-1">Optional: Für mehrtägige Aktivitäten</p>
               </div>
             </div>
 
@@ -3864,6 +3919,9 @@ const renderTabContent = () => {
                 setNewItineraryItem({
                   day: selectedDay,
                   time: '09:00',
+                  time_end: '',
+                  start_date: '',
+                  end_date: '',
                   title: '',
                   details: '',
                   type: '🎯 Aktivität'
