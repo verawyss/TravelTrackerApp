@@ -1123,6 +1123,11 @@ export default function TravelTrackerApp() {
     
     return grouped
   }
+// Helper function for expenses
+const getTotalExpenses = () => {
+  return expenses.reduce((sum, expense) => sum + parseFloat(expense.amount || 0), 0)
+}
+
 // 2️⃣ SCHRITT 2: Settlement-Berechnungsfunktionen hinzufügen
 // Füge diese Funktionen NACH den anderen Helper-Funktionen ein (z.B. nach getLocationsByType):
 
