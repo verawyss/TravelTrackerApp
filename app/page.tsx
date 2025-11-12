@@ -3617,6 +3617,7 @@ const renderTabContent = () => {
                 setShowExpenseModal(false)
                 setEditingExpense(null)
                 setNewExpense({
+                  trip_id: currentTrip?.id || '', // Add missing trip_id
                   category: '🍕 Essen & Trinken',
                   description: '',
                   amount: '',
