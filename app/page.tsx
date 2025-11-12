@@ -692,49 +692,6 @@ export default function TravelTrackerApp() {
     }
   }
 
-  const calculateSettlements = () => {
-    if (!expenses.length) return
-
-    const balances: { [key: string]: number } = {}
-    
-    expenses.forEach(expense => {
-      const amount = parseFloat(expense.amount.toString())
-      const splitAmount = amount / expense.split_between.length
-
-      if (!balances[expense.paid_by]) balances[expense.paid_by] = 0
-      balances[expense.paid_by] += amount
-
-      expense.split_between.forEach((person: string) => {
-        if (!balances[person]) balances[person] = 0
-        balances[person] -= splitAmount
-      })
-    })
-
-    const creditors = Object.entries(balances).filter(([_, balance]) => balance > 0.01)
-    const debtors = Object.entries(balances).filter(([_, balance]) => balance < -0.01)
-
-    const newSettlements: any[] = []
-
-    debtors.forEach(([debtor, debtAmount]) => {
-      let remaining = Math.abs(debtAmount)
-      
-      creditors.forEach(([creditor, creditAmount]) => {
-        if (remaining > 0.01 && creditAmount > 0.01) {
-          const transferAmount = Math.min(remaining, creditAmount)
-          newSettlements.push({
-            from: debtor,
-            to: creditor,
-            amount: transferAmount
-          })
-          remaining -= transferAmount
-          balances[creditor] -= transferAmount
-        }
-      })
-    })
-
-    setSettlements(newSettlements)
-    setShowSettlementModal(true)
-  }
 
   // ========== PACKING LIST FUNCTIONS ==========
   const loadPackingItems = async (tripId: string) => {
