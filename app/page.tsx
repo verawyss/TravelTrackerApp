@@ -2125,6 +2125,9 @@ const getSettlementStats = () => {
               setNewItineraryItem({
                 day: selectedDay,
                 time: '09:00',
+                time_end: '',
+                start_date: '',
+                end_date: '',
                 title: '',
                 details: '',
                 type: '🎯 Aktivität'
@@ -2180,6 +2183,9 @@ const getSettlementStats = () => {
                 setNewItineraryItem({
                   day: selectedDay,
                   time: '09:00',
+                  time_end: '',
+                  start_date: '',
+                  end_date: '',
                   title: '',
                   details: '',
                   type: '🎯 Aktivität'
