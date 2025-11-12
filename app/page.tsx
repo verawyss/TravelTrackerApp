@@ -63,7 +63,7 @@ export default function TravelTrackerApp() {
     if (!emojiSearch) return emojiCategories
 
     const search = emojiSearch.toLowerCase()
-    const filtered: typeof emojiCategories = {} as any
+    const filtered: { [key: string]: string[] } = {}
 
     Object.entries(emojiCategories).forEach(([category, emojis]) => {
       const matchingEmojis = emojis.filter(emoji => {
