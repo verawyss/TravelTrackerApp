@@ -1202,7 +1202,7 @@ export default function TravelTrackerApp() {
       
       if (!error) {
         // Reload locations to show on map
-        await loadLocations()
+        await loadLocations(currentTrip.id)
         setAuthMessage({ 
           type: 'success', 
           text: `✅ "${suggestion.name}" auf Karte gespeichert!` 
