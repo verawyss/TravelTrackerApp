@@ -34,11 +34,49 @@ export default function TravelTrackerApp() {
     status: 'active'
   })
 
-  const popularFlags = [
-    '🌍', '✈️', '🏖️', '🏔️', '🏝️', '🎒', '🚗', '🚢', '🏕️', '🗼',
-    '🇩🇪', '🇨🇭', '🇦🇹', '🇮🇹', '🇫🇷', '🇪🇸', '🇬🇷', '🇵🇹', '🇳🇱', '🇧🇪',
-    '🇬🇧', '🇺🇸', '🇨🇦', '🇲🇽', '🇧🇷', '🇦🇷', '🇯🇵', '🇹🇭', '🇦🇺', '🇳🇿'
-  ]
+  // ========== EMOJI PICKER STATE ==========
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [emojiSearch, setEmojiSearch] = useState('')
+  const [selectedEmojis, setSelectedEmojis] = useState<string[]>([])
+
+  const emojiCategories = {
+    '🌍 Reise': ['🌍', '🌎', '🌏', '✈️', '🛫', '🛬', '🚁', '🛩️', '🚀', '🛸'],
+    '🏖️ Urlaub': ['🏖️', '🏝️', '⛱️', '🏄', '🏊', '🤿', '⛵', '🚤', '⛴️', '🛳️', '🚢'],
+    '🏔️ Natur': ['🏔️', '⛰️', '🗻', '🏕️', '⛺', '🌲', '🌳', '🌴', '🌵', '🌾', '🏞️', '🌅', '🌄', '🌠', '🌌'],
+    '🏛️ Kultur': ['🏛️', '🏰', '🏯', '🗼', '🗽', '⛩️', '🕌', '🛕', '⛪', '💒', '🏤', '🏦', '🏛️'],
+    '🍕 Essen': ['🍕', '🍝', '🍔', '🍟', '🌭', '🥪', '🌮', '🌯', '🥗', '🍱', '🍜', '🍲', '🍛', '🍣', '🍤', '🥘', '🍳', '🥞'],
+    '🎯 Aktivität': ['🎯', '🎨', '🎭', '🎪', '🎡', '🎢', '🎠', '🎰', '🎳', '🎮', '🎲', '🧩', '🎯'],
+    '🚗 Transport': ['🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🚚', '🚛', '🚜', '🦽', '🦼', '🛴', '🚲', '🛵', '🏍️'],
+    '🎒 Ausrüstung': ['🎒', '🧳', '💼', '👜', '🎓', '🧢', '👒', '🎩', '⛑️', '📷', '📸', '🔦', '🧭', '⏰', '⏱️', '⌚'],
+    '🇩🇪 Europa': ['🇩🇪', '🇨🇭', '🇦🇹', '🇮🇹', '🇫🇷', '🇪🇸', '🇵🇹', '🇬🇷', '🇳🇱', '🇧🇪', '🇬🇧', '🇮🇪', '🇩🇰', '🇸🇪', '🇳🇴', '🇫🇮', '🇮🇸', '🇵🇱', '🇨🇿', '🇭🇺'],
+    '🇺🇸 Amerika': ['🇺🇸', '🇨🇦', '🇲🇽', '🇧🇷', '🇦🇷', '🇨🇱', '🇨🇴', '🇵🇪', '🇨🇺', '🇩🇴'],
+    '🇯🇵 Asien': ['🇯🇵', '🇨🇳', '🇰🇷', '🇹🇭', '🇻🇳', '🇮🇩', '🇵🇭', '🇸🇬', '🇲🇾', '🇮🇳', '🇦🇪', '🇮🇱'],
+    '🇦🇺 Ozeanien': ['🇦🇺', '🇳🇿', '🇫🇯', '🇵🇬', '🇳🇨', '🇵🇫'],
+    '🇿🇦 Afrika': ['🇿🇦', '🇪🇬', '🇲🇦', '🇰🇪', '🇹🇿', '🇳🇬', '🇬🇭', '🇪🇹', '🇹🇳', '🇩🇿']
+  }
+
+  const getAllEmojis = () => {
+    return Object.values(emojiCategories).flat()
+  }
+
+  const getFilteredEmojis = () => {
+    if (!emojiSearch) return emojiCategories
+
+    const search = emojiSearch.toLowerCase()
+    const filtered: typeof emojiCategories = {} as any
+
+    Object.entries(emojiCategories).forEach(([category, emojis]) => {
+      const matchingEmojis = emojis.filter(emoji => {
+        // Search by emoji itself or category name
+        return emoji.includes(search) || category.toLowerCase().includes(search)
+      })
+      if (matchingEmojis.length > 0) {
+        filtered[category] = matchingEmojis
+      }
+    })
+
+    return filtered
+  }
 
   // ========== ADMIN STATE ==========
   const [showAddUserModal, setShowAddUserModal] = useState(false)
@@ -354,6 +392,8 @@ export default function TravelTrackerApp() {
       setAuthMessage({ type: 'success', text: '✅ Reise aktualisiert!' })
       await loadAllTrips()
       setShowEditTripModal(false)
+      setShowEmojiPicker(false)
+      setEmojiSearch('')
       setEditingTrip(null)
     } catch (error: any) {
       setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
@@ -2930,20 +2970,81 @@ const renderTabContent = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Icon/Flag</label>
-              <div className="grid grid-cols-10 gap-2">
-                {popularFlags.map(flag => (
+              <label className="block text-sm font-medium mb-2">Icon/Emojis</label>
+              
+              {/* Selected Emojis Display */}
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex-1 px-4 py-3 border rounded-lg bg-gray-50 flex items-center gap-2 min-h-[50px]">
+                  {newTripData.flag ? (
+                    <span className="text-3xl">{newTripData.flag}</span>
+                  ) : (
+                    <span className="text-gray-400 text-sm">Wähle Emojis...</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  className="px-4 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2"
+                >
+                  😊 {showEmojiPicker ? 'Schließen' : 'Auswählen'}
+                </button>
+                {newTripData.flag && (
                   <button
-                    key={flag}
-                    onClick={() => setNewTripData({...newTripData, flag})}
-                    className={`text-2xl p-2 rounded hover:bg-gray-100 ${
-                      newTripData.flag === flag ? 'bg-teal-100 ring-2 ring-teal-500' : ''
-                    }`}
+                    type="button"
+                    onClick={() => setNewTripData({...newTripData, flag: ''})}
+                    className="px-3 py-3 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+                    title="Alle löschen"
                   >
-                    {flag}
+                    🗑️
                   </button>
-                ))}
+                )}
               </div>
+
+              {/* Emoji Picker Dropdown */}
+              {showEmojiPicker && (
+                <div className="border rounded-lg bg-white shadow-lg max-h-96 overflow-hidden">
+                  {/* Search */}
+                  <div className="p-3 border-b sticky top-0 bg-white">
+                    <input
+                      type="text"
+                      placeholder="🔍 Suche Emojis..."
+                      value={emojiSearch}
+                      onChange={(e) => setEmojiSearch(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+
+                  {/* Emoji Categories */}
+                  <div className="overflow-y-auto max-h-80 p-3">
+                    {Object.entries(getFilteredEmojis()).map(([category, emojis]) => (
+                      <div key={category} className="mb-4">
+                        <div className="text-xs font-semibold text-gray-600 mb-2">{category}</div>
+                        <div className="grid grid-cols-8 gap-1">
+                          {emojis.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => {
+                                setNewTripData({...newTripData, flag: newTripData.flag + emoji})
+                              }}
+                              className="text-2xl p-2 rounded hover:bg-gray-100 transition-colors"
+                              title="Hinzufügen"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {Object.keys(getFilteredEmojis()).length === 0 && (
+                      <div className="text-center py-8 text-gray-400">
+                        <span className="text-4xl mb-2 block">🔍</span>
+                        <p className="text-sm">Keine Emojis gefunden</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -2987,6 +3088,8 @@ const renderTabContent = () => {
             <button 
               onClick={() => {
                 setShowNewTripModal(false)
+                setShowEmojiPicker(false)
+                setEmojiSearch('')
                 setNewTripData({
                   name: '',
                   destination: '',
@@ -3044,20 +3147,81 @@ const renderTabContent = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Icon/Flag</label>
-              <div className="grid grid-cols-10 gap-2">
-                {popularFlags.map(flag => (
+              <label className="block text-sm font-medium mb-2">Icon/Emojis</label>
+              
+              {/* Selected Emojis Display */}
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex-1 px-4 py-3 border rounded-lg bg-gray-50 flex items-center gap-2 min-h-[50px]">
+                  {editingTrip.flag ? (
+                    <span className="text-3xl">{editingTrip.flag}</span>
+                  ) : (
+                    <span className="text-gray-400 text-sm">Wähle Emojis...</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  className="px-4 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2"
+                >
+                  😊 {showEmojiPicker ? 'Schließen' : 'Auswählen'}
+                </button>
+                {editingTrip.flag && (
                   <button
-                    key={flag}
-                    onClick={() => setEditingTrip({...editingTrip, flag})}
-                    className={`text-2xl p-2 rounded hover:bg-gray-100 ${
-                      editingTrip.flag === flag ? 'bg-teal-100 ring-2 ring-teal-500' : ''
-                    }`}
+                    type="button"
+                    onClick={() => setEditingTrip({...editingTrip, flag: ''})}
+                    className="px-3 py-3 bg-red-50 text-red-600 rounded-lg hover:bg-red-100"
+                    title="Alle löschen"
                   >
-                    {flag}
+                    🗑️
                   </button>
-                ))}
+                )}
               </div>
+
+              {/* Emoji Picker Dropdown */}
+              {showEmojiPicker && (
+                <div className="border rounded-lg bg-white shadow-lg max-h-96 overflow-hidden">
+                  {/* Search */}
+                  <div className="p-3 border-b sticky top-0 bg-white">
+                    <input
+                      type="text"
+                      placeholder="🔍 Suche Emojis..."
+                      value={emojiSearch}
+                      onChange={(e) => setEmojiSearch(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-teal-500"
+                    />
+                  </div>
+
+                  {/* Emoji Categories */}
+                  <div className="overflow-y-auto max-h-80 p-3">
+                    {Object.entries(getFilteredEmojis()).map(([category, emojis]) => (
+                      <div key={category} className="mb-4">
+                        <div className="text-xs font-semibold text-gray-600 mb-2">{category}</div>
+                        <div className="grid grid-cols-8 gap-1">
+                          {emojis.map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => {
+                                setEditingTrip({...editingTrip, flag: editingTrip.flag + emoji})
+                              }}
+                              className="text-2xl p-2 rounded hover:bg-gray-100 transition-colors"
+                              title="Hinzufügen"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {Object.keys(getFilteredEmojis()).length === 0 && (
+                      <div className="text-center py-8 text-gray-400">
+                        <span className="text-4xl mb-2 block">🔍</span>
+                        <p className="text-sm">Keine Emojis gefunden</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -3113,6 +3277,8 @@ const renderTabContent = () => {
             <button 
               onClick={() => {
                 setShowEditTripModal(false)
+                setShowEmojiPicker(false)
+                setEmojiSearch('')
                 setEditingTrip(null)
               }}
               className="flex-1 px-6 py-2 border rounded-lg hover:bg-gray-50"
