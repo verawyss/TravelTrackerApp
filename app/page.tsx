@@ -140,6 +140,12 @@ export default function TravelTrackerApp() {
     type: '🎯 Aktivität'
   })
 
+  // ========== LOCATION AUTOCOMPLETE STATE (für Itinerary) ==========
+  const [locationSuggestions, setLocationSuggestions] = useState<any[]>([])
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
+  const [isSearchingLocations, setIsSearchingLocations] = useState(false)
+  const [locationSearchTimeout, setLocationSearchTimeout] = useState<NodeJS.Timeout | null>(null)
+
   const itineraryTypes = [
     { id: '🍳 Frühstück', icon: '🍳', label: 'Frühstück' },
     { id: '🚗 Transport', icon: '🚗', label: 'Transport' },
@@ -943,6 +949,13 @@ export default function TravelTrackerApp() {
         details: '',
         type: '🎯 Aktivität'
       })
+      // Clear autocomplete state
+      setLocationSuggestions([])
+      setShowLocationSuggestions(false)
+      if (locationSearchTimeout) {
+        clearTimeout(locationSearchTimeout)
+        setLocationSearchTimeout(null)
+      }
     } catch (error: any) {
       setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
     } finally {
@@ -1064,6 +1077,164 @@ export default function TravelTrackerApp() {
         longitude: result.longitude
       })
       setAuthMessage({ type: 'success', text: '✅ Koordinaten gefunden!' })
+    }
+  }
+
+  // ========== LOCATION AUTOCOMPLETE ==========
+  const searchLocations = async (query: string) => {
+    if (query.length < 3) {
+      setLocationSuggestions([])
+      setShowLocationSuggestions(false)
+      return
+    }
+
+    setIsSearchingLocations(true)
+    
+    try {
+      // Use OpenStreetMap Nominatim for free geocoding
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?` +
+        `format=json&` +
+        `q=${encodeURIComponent(query)}&` +
+        `limit=8&` +
+        `addressdetails=1`,
+        {
+          headers: {
+            'User-Agent': 'TravelTrackerPro/1.0'
+          }
+        }
+      )
+      
+      const data = await response.json()
+      
+      if (data && Array.isArray(data)) {
+        const suggestions = data.map((item: any) => ({
+          name: item.display_name.split(',')[0], // First part of address
+          full_address: item.display_name,
+          latitude: parseFloat(item.lat),
+          longitude: parseFloat(item.lon),
+          type: item.type,
+          icon: getLocationIconFromType(item.type)
+        }))
+        
+        setLocationSuggestions(suggestions)
+        setShowLocationSuggestions(suggestions.length > 0)
+      }
+    } catch (error) {
+      console.error('Location search error:', error)
+      setLocationSuggestions([])
+    } finally {
+      setIsSearchingLocations(false)
+    }
+  }
+
+  const getLocationIconFromType = (type: string): string => {
+    const typeMap: { [key: string]: string } = {
+      'hotel': '🏨',
+      'hostel': '🏨',
+      'guest_house': '🏨',
+      'restaurant': '🍕',
+      'cafe': '☕',
+      'fast_food': '🍔',
+      'bar': '🍷',
+      'pub': '🍺',
+      'attraction': '📸',
+      'museum': '🏛️',
+      'monument': '🗿',
+      'castle': '🏰',
+      'stadium': '🏟️',
+      'park': '🌳',
+      'beach': '🏖️',
+      'airport': '✈️',
+      'train_station': '🚂',
+      'bus_station': '🚌',
+      'subway': '🚇',
+      'shop': '🛍️',
+      'supermarket': '🛒',
+      'mall': '🏬'
+    }
+    
+    return typeMap[type] || '📍'
+  }
+
+  const handleLocationSelect = async (suggestion: any) => {
+    // Update the title with the selected location name
+    setNewItineraryItem({
+      ...newItineraryItem,
+      title: suggestion.name
+    })
+    
+    // Close suggestions dropdown
+    setShowLocationSuggestions(false)
+    setLocationSuggestions([])
+    
+    // Determine location type based on itinerary type
+    let locationType = '📍 Sonstiges'
+    if (newItineraryItem.type.includes('Restaurant') || newItineraryItem.type.includes('Frühstück')) {
+      locationType = '🍕 Restaurant'
+    } else if (newItineraryItem.type.includes('Hotel') || newItineraryItem.type.includes('Check-in')) {
+      locationType = '🏨 Hotel'
+    } else if (newItineraryItem.type.includes('Sehenswürdigkeit')) {
+      locationType = '📸 Sehenswürdigkeit'
+    } else if (newItineraryItem.type.includes('Transport')) {
+      locationType = '🚗 Transport'
+    } else if (newItineraryItem.type.includes('Shopping')) {
+      locationType = '🛍️ Shopping'
+    } else if (newItineraryItem.type.includes('Aktivität')) {
+      locationType = '🎯 Aktivität'
+    }
+    
+    // Auto-save location to database
+    try {
+      const locationData = {
+        trip_id: currentTrip.id,
+        name: suggestion.name,
+        address: suggestion.full_address,
+        latitude: suggestion.latitude,
+        longitude: suggestion.longitude,
+        type: locationType,
+        notes: `Automatisch hinzugefügt von Reiseplan`
+      }
+      
+      const { error } = await supabase
+        .from('locations')
+        .insert(locationData)
+      
+      if (!error) {
+        // Reload locations to show on map
+        await loadLocations()
+        setAuthMessage({ 
+          type: 'success', 
+          text: `✅ "${suggestion.name}" auf Karte gespeichert!` 
+        })
+      }
+    } catch (error) {
+      console.error('Error auto-saving location:', error)
+      // Don't show error to user - it's an optional feature
+    }
+  }
+
+  const handleTitleChange = (value: string) => {
+    setNewItineraryItem({
+      ...newItineraryItem,
+      title: value
+    })
+    
+    // Clear existing timeout
+    if (locationSearchTimeout) {
+      clearTimeout(locationSearchTimeout)
+    }
+    
+    // Set new timeout for search (debounce)
+    if (value.trim().length >= 3) {
+      const timeout = setTimeout(() => {
+        searchLocations(value)
+      }, 500) // Wait 500ms after user stops typing
+      
+      setLocationSearchTimeout(timeout)
+    } else {
+      setLocationSuggestions([])
+      setShowLocationSuggestions(false)
     }
   }
 
@@ -3568,15 +3739,56 @@ const renderTabContent = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Titel *</label>
-              <input 
-                type="text"
-                placeholder="z.B. Frühstück im Hotel"
-                value={newItineraryItem.title}
-                onChange={(e) => setNewItineraryItem({...newItineraryItem, title: e.target.value})}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-                autoFocus
-              />
+              <label className="block text-sm font-medium mb-2">Titel * {isSearchingLocations && '🔍'}</label>
+              <div className="relative">
+                <input 
+                  type="text"
+                  placeholder="z.B. Hotel Schweizerhof oder Frühstück im Hotel"
+                  value={newItineraryItem.title}
+                  onChange={(e) => handleTitleChange(e.target.value)}
+                  onFocus={() => {
+                    // Show suggestions if we have any
+                    if (locationSuggestions.length > 0) {
+                      setShowLocationSuggestions(true)
+                    }
+                  }}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                  autoFocus
+                />
+                
+                {/* Autocomplete Dropdown */}
+                {showLocationSuggestions && locationSuggestions.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                    <div className="p-2 bg-gray-50 border-b text-xs text-gray-600 flex items-center gap-2">
+                      <span>📍</span>
+                      <span>Locations gefunden - klicke zum Auswählen & automatisch auf Karte speichern</span>
+                    </div>
+                    {locationSuggestions.map((suggestion, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => handleLocationSelect(suggestion)}
+                        className="w-full text-left px-4 py-3 hover:bg-teal-50 border-b last:border-b-0 transition-colors"
+                      >
+                        <div className="flex items-start gap-3">
+                          <span className="text-2xl flex-shrink-0">{suggestion.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900 truncate">
+                              {suggestion.name}
+                            </div>
+                            <div className="text-sm text-gray-600 truncate">
+                              {suggestion.full_address}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                💡 Tipp: Gib einen Ort ein (z.B. "Schweizerhof Genf") und wir finden automatisch die Location
+              </p>
             </div>
 
             <div>
@@ -3603,6 +3815,13 @@ const renderTabContent = () => {
                   details: '',
                   type: '🎯 Aktivität'
                 })
+                // Clear autocomplete state
+                setLocationSuggestions([])
+                setShowLocationSuggestions(false)
+                if (locationSearchTimeout) {
+                  clearTimeout(locationSearchTimeout)
+                  setLocationSearchTimeout(null)
+                }
               }}
               className="flex-1 px-6 py-2 border rounded-lg hover:bg-gray-50"
             >
