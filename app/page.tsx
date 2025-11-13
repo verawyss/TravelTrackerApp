@@ -119,14 +119,23 @@ export default function TravelTrackerApp() {
     essential: false
   })
 
-  const packingCategories = [
-    { id: '👕 Kleidung', icon: '👕', label: 'Kleidung' },
-    { id: '📱 Elektronik', icon: '📱', label: 'Elektronik' },
-    { id: '🧴 Hygiene', icon: '🧴', label: 'Hygiene' },
-    { id: '📄 Dokumente', icon: '📄', label: 'Dokumente' },
-    { id: '💊 Medikamente', icon: '💊', label: 'Medikamente' },
-    { id: '🎒 Sonstiges', icon: '🎒', label: 'Sonstiges' }
-  ]
+// Aktualisierte Packing Categories mit mehr Optionen
+const packingCategories = [
+  { id: '👕 Kleidung', icon: '👕', label: 'Kleidung' },
+  { id: '👟 Schuhe', icon: '👟', label: 'Schuhe' },
+  { id: '📱 Elektronik', icon: '📱', label: 'Elektronik' },
+  { id: '🧴 Körperpflege', icon: '🧴', label: 'Körperpflege' },
+  { id: '💊 Medikamente', icon: '💊', label: 'Medikamente' },
+  { id: '📄 Dokumente', icon: '📄', label: 'Dokumente' },
+  { id: '💳 Finanzen', icon: '💳', label: 'Finanzen' },
+  { id: '🏖️ Strand', icon: '🏖️', label: 'Strand' },
+  { id: '⛷️ Winter/Sport', icon: '⛷️', label: 'Winter/Sport' },
+  { id: '🎒 Ausrüstung', icon: '🎒', label: 'Ausrüstung' },
+  { id: '📚 Unterhaltung', icon: '📚', label: 'Unterhaltung' },
+  { id: '🍴 Essen/Snacks', icon: '🍴', label: 'Essen/Snacks' },
+  { id: '🧸 Kinder', icon: '🧸', label: 'Kinder' },
+  { id: '📝 Sonstiges', icon: '📝', label: 'Sonstiges' }
+]
 
   // ========== ITINERARY STATE ==========
   const [itineraryItems, setItineraryItems] = useState<any[]>([])
@@ -182,23 +191,7 @@ const [saveTemplateData, setSaveTemplateData] = useState({
   is_public: false
 })
 
-// Aktualisierte Packing Categories mit mehr Optionen
-const packingCategories = [
-  { id: '👕 Kleidung', icon: '👕', label: 'Kleidung' },
-  { id: '👟 Schuhe', icon: '👟', label: 'Schuhe' },
-  { id: '📱 Elektronik', icon: '📱', label: 'Elektronik' },
-  { id: '🧴 Körperpflege', icon: '🧴', label: 'Körperpflege' },
-  { id: '💊 Medikamente', icon: '💊', label: 'Medikamente' },
-  { id: '📄 Dokumente', icon: '📄', label: 'Dokumente' },
-  { id: '💳 Finanzen', icon: '💳', label: 'Finanzen' },
-  { id: '🏖️ Strand', icon: '🏖️', label: 'Strand' },
-  { id: '⛷️ Winter/Sport', icon: '⛷️', label: 'Winter/Sport' },
-  { id: '🎒 Ausrüstung', icon: '🎒', label: 'Ausrüstung' },
-  { id: '📚 Unterhaltung', icon: '📚', label: 'Unterhaltung' },
-  { id: '🍴 Essen/Snacks', icon: '🍴', label: 'Essen/Snacks' },
-  { id: '🧸 Kinder', icon: '🧸', label: 'Kinder' },
-  { id: '📝 Sonstiges', icon: '📝', label: 'Sonstiges' }
-]
+
 
 const templateIcons = [
   '🎒', '🧳', '🏖️', '🏔️', '✈️', '🚗', '🏕️', '🏛️', 
