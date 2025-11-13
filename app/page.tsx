@@ -1002,9 +1002,40 @@ export default function TravelTrackerApp() {
   }
 
   const getItineraryItemsForDay = (day: number) => {
+    if (!currentTrip || !currentTrip.start_date) {
+      return itineraryItems
+        .filter(item => item.day === day)
+        .sort((a, b) => a.time.localeCompare(b.time))
+    }
+
+    // Get the actual date for this day
+    const tripStartDate = new Date(currentTrip.start_date)
+    const currentDayDate = new Date(tripStartDate)
+    currentDayDate.setDate(tripStartDate.getDate() + day - 1)
+
     return itineraryItems
-      .filter(item => item.day === day)
-      .sort((a, b) => a.time.localeCompare(b.time))
+      .filter(item => {
+        // Always include items that belong to this day
+        if (item.day === day) return true
+        
+        // Check if this item is a multi-day event that spans to this day
+        if (item.end_date) {
+          const itemStartDate = new Date(tripStartDate)
+          itemStartDate.setDate(tripStartDate.getDate() + item.day - 1)
+          const itemEndDate = new Date(item.end_date)
+          
+          // Check if currentDayDate is between itemStartDate and itemEndDate
+          return currentDayDate >= itemStartDate && currentDayDate <= itemEndDate
+        }
+        
+        return false
+      })
+      .sort((a, b) => {
+        // Sort by time, but put multi-day events first if they started on a previous day
+        if (a.day !== day && b.day === day) return -1
+        if (a.day === day && b.day !== day) return 1
+        return a.time.localeCompare(b.time)
+      })
   }
 
   const getTripDays = () => {
@@ -2202,8 +2233,36 @@ const getSettlementStats = () => {
             {dayItems.map((item, index) => {
               const typeIcon = itineraryTypes.find(t => t.id === item.type)?.icon || '📝'
               
+              // Calculate which day of the multi-day event this is
+              const isMultiDay = item.end_date && item.day !== selectedDay
+              let multiDayInfo = null
+              
+              if (item.end_date && currentTrip?.start_date) {
+                const tripStartDate = new Date(currentTrip.start_date)
+                const itemStartDate = new Date(tripStartDate)
+                itemStartDate.setDate(tripStartDate.getDate() + item.day - 1)
+                const itemEndDate = new Date(item.end_date)
+                const currentDayDate = new Date(tripStartDate)
+                currentDayDate.setDate(tripStartDate.getDate() + selectedDay - 1)
+                
+                const totalDays = Math.ceil((itemEndDate.getTime() - itemStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+                const currentDayOfEvent = Math.ceil((currentDayDate.getTime() - itemStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+                
+                multiDayInfo = {
+                  currentDay: currentDayOfEvent,
+                  totalDays: totalDays,
+                  isFirstDay: item.day === selectedDay,
+                  isLastDay: currentDayDate.getTime() === itemEndDate.getTime()
+                }
+              }
+              
               return (
-                <div key={item.id} className="bg-white rounded-lg shadow">
+                <div 
+                  key={item.id} 
+                  className={`rounded-lg shadow ${
+                    isMultiDay ? 'bg-blue-50 border-2 border-blue-200' : 'bg-white'
+                  }`}
+                >
                   <div className="p-4">
                     <div className="flex items-start gap-4">
                       {/* Time column */}
@@ -2243,6 +2302,17 @@ const getSettlementStats = () => {
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">
+                        {/* Multi-day event indicator */}
+                        {multiDayInfo && (
+                          <div className="mb-2 inline-block">
+                            <span className="text-xs px-3 py-1 bg-blue-600 text-white rounded-full font-medium">
+                              {multiDayInfo.isFirstDay ? '🎬 Start' : 
+                               multiDayInfo.isLastDay ? '🏁 Ende' : 
+                               `📅 Tag ${multiDayInfo.currentDay}/${multiDayInfo.totalDays}`}
+                            </span>
+                          </div>
+                        )}
+                        
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
