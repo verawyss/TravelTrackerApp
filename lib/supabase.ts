@@ -541,6 +541,500 @@ export function calculateDistance(
 function deg2rad(deg: number): number {
   return deg * (Math.PI / 180)
 }
+// =====================================================
+// ERWEITERTE PACKING LIST TYPES & FUNCTIONS
+// Zu lib/supabase.ts hinzufügen
+// =====================================================
+
+// ========== NEUE TYPES ==========
+
+export interface PackingListTemplate {
+  id: string
+  user_id: string
+  name: string
+  description?: string
+  icon: string
+  trip_type?: string
+  is_public: boolean
+  use_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PackingListTemplateItem {
+  id: string
+  template_id: string
+  category: string
+  item: string
+  essential: boolean
+  quantity: number
+  notes?: string
+  sort_order: number
+  created_at: string
+}
+
+export interface TripPackingList {
+  id: string
+  trip_id: string
+  template_id?: string
+  name: string
+  created_from_template: boolean
+  created_at: string
+  template?: PackingListTemplate
+}
+
+export interface TripPackingItem {
+  id: string
+  trip_packing_list_id: string
+  category: string
+  item: string
+  packed: boolean
+  essential: boolean
+  quantity: number
+  notes?: string
+  packed_by?: string
+  packed_at?: string
+  sort_order: number
+  created_at: string
+}
+
+export interface PackingListWithItems extends TripPackingList {
+  items: TripPackingItem[]
+  total_items: number
+  packed_items: number
+  progress_percentage: number
+}
+
+export interface TemplateWithItems extends PackingListTemplate {
+  items: PackingListTemplateItem[]
+  total_items: number
+}
+
+// ========== TEMPLATE MANAGEMENT ==========
+
+/**
+ * Alle Templates des Users abrufen (inkl. öffentliche Templates)
+ */
+export async function getPackingTemplates(userId: string) {
+  const { data, error } = await supabase
+    .from('packing_list_templates')
+    .select('*')
+    .or(`user_id.eq.${userId},is_public.eq.true`)
+    .order('use_count', { ascending: false })
+    .order('name')
+
+  if (error) throw error
+  return data as PackingListTemplate[]
+}
+
+/**
+ * Template mit allen Items abrufen
+ */
+export async function getTemplateWithItems(templateId: string): Promise<TemplateWithItems> {
+  // Get template
+  const { data: template, error: templateError } = await supabase
+    .from('packing_list_templates')
+    .select('*')
+    .eq('id', templateId)
+    .single()
+
+  if (templateError) throw templateError
+
+  // Get items
+  const { data: items, error: itemsError } = await supabase
+    .from('packing_list_template_items')
+    .select('*')
+    .eq('template_id', templateId)
+    .order('sort_order')
+
+  if (itemsError) throw itemsError
+
+  return {
+    ...template,
+    items: items || [],
+    total_items: items?.length || 0
+  }
+}
+
+/**
+ * Neues Template erstellen
+ */
+export async function createPackingTemplate(
+  userId: string,
+  template: Omit<PackingListTemplate, 'id' | 'user_id' | 'use_count' | 'created_at' | 'updated_at'>
+) {
+  const { data, error } = await supabase
+    .from('packing_list_templates')
+    .insert({
+      ...template,
+      user_id: userId
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as PackingListTemplate
+}
+
+/**
+ * Template bearbeiten
+ */
+export async function updatePackingTemplate(
+  templateId: string,
+  updates: Partial<PackingListTemplate>
+) {
+  const { data, error } = await supabase
+    .from('packing_list_templates')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', templateId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as PackingListTemplate
+}
+
+/**
+ * Template löschen
+ */
+export async function deletePackingTemplate(templateId: string) {
+  const { error } = await supabase
+    .from('packing_list_templates')
+    .delete()
+    .eq('id', templateId)
+
+  if (error) throw error
+}
+
+/**
+ * Item zu Template hinzufügen
+ */
+export async function addTemplateItem(
+  templateId: string,
+  item: Omit<PackingListTemplateItem, 'id' | 'template_id' | 'created_at'>
+) {
+  const { data, error } = await supabase
+    .from('packing_list_template_items')
+    .insert({
+      ...item,
+      template_id: templateId
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as PackingListTemplateItem
+}
+
+/**
+ * Template-Item bearbeiten
+ */
+export async function updateTemplateItem(
+  itemId: string,
+  updates: Partial<PackingListTemplateItem>
+) {
+  const { data, error } = await supabase
+    .from('packing_list_template_items')
+    .update(updates)
+    .eq('id', itemId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as PackingListTemplateItem
+}
+
+/**
+ * Template-Item löschen
+ */
+export async function deleteTemplateItem(itemId: string) {
+  const { error } = await supabase
+    .from('packing_list_template_items')
+    .delete()
+    .eq('id', itemId)
+
+  if (error) throw error
+}
+
+// ========== TRIP PACKING LIST MANAGEMENT ==========
+
+/**
+ * Packliste für Trip erstellen (leer oder aus Template)
+ */
+export async function createTripPackingList(
+  tripId: string,
+  name: string,
+  templateId?: string
+) {
+  if (templateId) {
+    // Verwende SQL-Funktion um Template zu kopieren
+    const { data, error } = await supabase.rpc('copy_template_to_trip', {
+      p_template_id: templateId,
+      p_trip_id: tripId,
+      p_list_name: name
+    })
+
+    if (error) throw error
+    return data
+  } else {
+    // Erstelle leere Packliste
+    const { data, error } = await supabase
+      .from('trip_packing_lists')
+      .insert({
+        trip_id: tripId,
+        name,
+        created_from_template: false
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+    return data as TripPackingList
+  }
+}
+
+/**
+ * Packliste für Trip abrufen (mit Items und Statistiken)
+ */
+export async function getTripPackingList(tripId: string): Promise<PackingListWithItems | null> {
+  // Get packing list
+  const { data: packingList, error: listError } = await supabase
+    .from('trip_packing_lists')
+    .select(`
+      *,
+      template:packing_list_templates(*)
+    `)
+    .eq('trip_id', tripId)
+    .single()
+
+  if (listError) {
+    if (listError.code === 'PGRST116') return null // Not found
+    throw listError
+  }
+
+  // Get items
+  const { data: items, error: itemsError } = await supabase
+    .from('trip_packing_items')
+    .select('*')
+    .eq('trip_packing_list_id', packingList.id)
+    .order('sort_order')
+
+  if (itemsError) throw itemsError
+
+  const totalItems = items?.length || 0
+  const packedItems = items?.filter(item => item.packed).length || 0
+
+  return {
+    ...packingList,
+    items: items || [],
+    total_items: totalItems,
+    packed_items: packedItems,
+    progress_percentage: totalItems > 0 ? Math.round((packedItems / totalItems) * 100) : 0
+  }
+}
+
+/**
+ * Item zur Trip-Packliste hinzufügen
+ */
+export async function addTripPackingItem(
+  packingListId: string,
+  item: Omit<TripPackingItem, 'id' | 'trip_packing_list_id' | 'packed' | 'packed_by' | 'packed_at' | 'created_at'>
+) {
+  const { data, error } = await supabase
+    .from('trip_packing_items')
+    .insert({
+      ...item,
+      trip_packing_list_id: packingListId,
+      packed: false
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as TripPackingItem
+}
+
+/**
+ * Item als gepackt/ungepackt markieren
+ */
+export async function togglePackingItem(itemId: string, packed: boolean, userId?: string) {
+  const updates: any = {
+    packed,
+    packed_at: packed ? new Date().toISOString() : null
+  }
+
+  if (packed && userId) {
+    updates.packed_by = userId
+  } else if (!packed) {
+    updates.packed_by = null
+  }
+
+  const { data, error } = await supabase
+    .from('trip_packing_items')
+    .update(updates)
+    .eq('id', itemId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as TripPackingItem
+}
+
+/**
+ * Trip-Packing-Item bearbeiten
+ */
+export async function updateTripPackingItem(
+  itemId: string,
+  updates: Partial<TripPackingItem>
+) {
+  const { data, error } = await supabase
+    .from('trip_packing_items')
+    .update(updates)
+    .eq('id', itemId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data as TripPackingItem
+}
+
+/**
+ * Trip-Packing-Item löschen
+ */
+export async function deleteTripPackingItem(itemId: string) {
+  const { error } = await supabase
+    .from('trip_packing_items')
+    .delete()
+    .eq('id', itemId)
+
+  if (error) throw error
+}
+
+/**
+ * Trip-Packliste löschen
+ */
+export async function deleteTripPackingList(tripId: string) {
+  const { error } = await supabase
+    .from('trip_packing_lists')
+    .delete()
+    .eq('trip_id', tripId)
+
+  if (error) throw error
+}
+
+/**
+ * Template aus aktueller Packliste erstellen
+ */
+export async function saveAsTemplate(
+  tripId: string,
+  userId: string,
+  templateName: string,
+  templateDescription: string,
+  icon: string = '🎒',
+  isPublic: boolean = false
+) {
+  // Get current packing list with items
+  const packingList = await getTripPackingList(tripId)
+  if (!packingList) throw new Error('No packing list found for this trip')
+
+  // Create new template
+  const template = await createPackingTemplate(userId, {
+    name: templateName,
+    description: templateDescription,
+    icon,
+    is_public: isPublic
+  })
+
+  // Copy items to template
+  for (const item of packingList.items) {
+    await addTemplateItem(template.id, {
+      category: item.category,
+      item: item.item,
+      essential: item.essential,
+      quantity: item.quantity,
+      notes: item.notes,
+      sort_order: item.sort_order
+    })
+  }
+
+  return template
+}
+
+// ========== UTILITY FUNCTIONS ==========
+
+/**
+ * Kategorien aus Packliste extrahieren
+ */
+export function getPackingCategories(items: (TripPackingItem | PackingListTemplateItem)[]): string[] {
+  const categories = new Set(items.map(item => item.category))
+  return Array.from(categories).sort()
+}
+
+/**
+ * Items nach Kategorie gruppieren
+ */
+export function groupItemsByCategory(items: (TripPackingItem | PackingListTemplateItem)[]) {
+  return items.reduce((acc, item) => {
+    if (!acc[item.category]) {
+      acc[item.category] = []
+    }
+    acc[item.category].push(item)
+    return acc
+  }, {} as Record<string, typeof items>)
+}
+
+/**
+ * Statistiken für Packliste berechnen
+ */
+export function calculatePackingStats(items: TripPackingItem[]) {
+  const total = items.length
+  const packed = items.filter(i => i.packed).length
+  const essential = items.filter(i => i.essential).length
+  const essentialPacked = items.filter(i => i.essential && i.packed).length
+  
+  return {
+    total,
+    packed,
+    unpacked: total - packed,
+    essential,
+    essentialPacked,
+    essentialUnpacked: essential - essentialPacked,
+    progress: total > 0 ? Math.round((packed / total) * 100) : 0,
+    essentialProgress: essential > 0 ? Math.round((essentialPacked / essential) * 100) : 0
+  }
+}
+
+// ========== EXPORT ==========
+
+export const PackingListService = {
+  // Templates
+  getPackingTemplates,
+  getTemplateWithItems,
+  createPackingTemplate,
+  updatePackingTemplate,
+  deletePackingTemplate,
+  addTemplateItem,
+  updateTemplateItem,
+  deleteTemplateItem,
+  
+  // Trip Packing Lists
+  createTripPackingList,
+  getTripPackingList,
+  addTripPackingItem,
+  togglePackingItem,
+  updateTripPackingItem,
+  deleteTripPackingItem,
+  deleteTripPackingList,
+  saveAsTemplate,
+  
+  // Utils
+  getPackingCategories,
+  groupItemsByCategory,
+  calculatePackingStats
+}
 
 // =====================================================
 // EXPORT ALL
