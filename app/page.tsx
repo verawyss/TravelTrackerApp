@@ -144,6 +144,821 @@ export default function TravelTrackerApp() {
     type: '🎯 Aktivität'
   })
 
+  // =================================================================
+// ERWEITERTE PACKLISTEN-VERWALTUNG MIT TEMPLATES
+// Diesen Code in die page.tsx integrieren
+// =================================================================
+
+// ========== NEUE STATE VARIABLEN (zu den bestehenden hinzufügen) ==========
+
+const [packingTemplates, setPackingTemplates] = useState<any[]>([])
+const [showTemplateModal, setShowTemplateModal] = useState(false)
+const [showTemplateSelector, setShowTemplateSelector] = useState(false)
+const [showSaveAsTemplateModal, setShowSaveAsTemplateModal] = useState(false)
+const [editingTemplate, setEditingTemplate] = useState<any>(null)
+const [selectedTemplate, setSelectedTemplate] = useState<any>(null)
+const [currentTripPackingList, setCurrentTripPackingList] = useState<any>(null)
+const [packingStats, setPackingStats] = useState({
+  total: 0,
+  packed: 0,
+  unpacked: 0,
+  essential: 0,
+  essentialPacked: 0,
+  progress: 0
+})
+
+const [newTemplate, setNewTemplate] = useState({
+  name: '',
+  description: '',
+  icon: '🎒',
+  trip_type: '',
+  is_public: false
+})
+
+const [saveTemplateData, setSaveTemplateData] = useState({
+  name: '',
+  description: '',
+  icon: '🎒',
+  is_public: false
+})
+
+// Aktualisierte Packing Categories mit mehr Optionen
+const packingCategories = [
+  { id: '👕 Kleidung', icon: '👕', label: 'Kleidung' },
+  { id: '👟 Schuhe', icon: '👟', label: 'Schuhe' },
+  { id: '📱 Elektronik', icon: '📱', label: 'Elektronik' },
+  { id: '🧴 Körperpflege', icon: '🧴', label: 'Körperpflege' },
+  { id: '💊 Medikamente', icon: '💊', label: 'Medikamente' },
+  { id: '📄 Dokumente', icon: '📄', label: 'Dokumente' },
+  { id: '💳 Finanzen', icon: '💳', label: 'Finanzen' },
+  { id: '🏖️ Strand', icon: '🏖️', label: 'Strand' },
+  { id: '⛷️ Winter/Sport', icon: '⛷️', label: 'Winter/Sport' },
+  { id: '🎒 Ausrüstung', icon: '🎒', label: 'Ausrüstung' },
+  { id: '📚 Unterhaltung', icon: '📚', label: 'Unterhaltung' },
+  { id: '🍴 Essen/Snacks', icon: '🍴', label: 'Essen/Snacks' },
+  { id: '🧸 Kinder', icon: '🧸', label: 'Kinder' },
+  { id: '📝 Sonstiges', icon: '📝', label: 'Sonstiges' }
+]
+
+const templateIcons = [
+  '🎒', '🧳', '🏖️', '🏔️', '✈️', '🚗', '🏕️', '🏛️', 
+  '🏖️', '⛷️', '🏄', '🚴', '🥾', '🎒', '💼', '🎓'
+]
+
+// ========== LOAD FUNCTIONS ==========
+
+const loadPackingTemplates = async () => {
+  if (!currentUser) return
+  
+  try {
+    const { data, error } = await supabase
+      .from('packing_list_templates')
+      .select('*')
+      .or(`user_id.eq.${currentUser.id},is_public.eq.true`)
+      .order('use_count', { ascending: false })
+      .order('name')
+
+    if (error) throw error
+    setPackingTemplates(data || [])
+  } catch (error) {
+    console.error('Error loading templates:', error)
+  }
+}
+
+const loadTripPackingList = async (tripId: string) => {
+  if (!tripId) return
+  
+  try {
+    // Check if packing list exists
+    const { data: packingList, error: listError } = await supabase
+      .from('trip_packing_lists')
+      .select(`
+        *,
+        template:packing_list_templates(*)
+      `)
+      .eq('trip_id', tripId)
+      .maybeSingle()
+
+    if (listError) throw listError
+
+    if (packingList) {
+      // Load items
+      const { data: items, error: itemsError } = await supabase
+        .from('trip_packing_items')
+        .select('*')
+        .eq('trip_packing_list_id', packingList.id)
+        .order('sort_order')
+
+      if (itemsError) throw itemsError
+
+      setCurrentTripPackingList(packingList)
+      setPackingItems(items || [])
+      updatePackingStats(items || [])
+    } else {
+      setCurrentTripPackingList(null)
+      setPackingItems([])
+      updatePackingStats([])
+    }
+  } catch (error) {
+    console.error('Error loading packing list:', error)
+  }
+}
+
+const updatePackingStats = (items: any[]) => {
+  const total = items.length
+  const packed = items.filter(i => i.packed).length
+  const essential = items.filter(i => i.essential).length
+  const essentialPacked = items.filter(i => i.essential && i.packed).length
+
+  setPackingStats({
+    total,
+    packed,
+    unpacked: total - packed,
+    essential,
+    essentialPacked,
+    progress: total > 0 ? Math.round((packed / total) * 100) : 0
+  })
+}
+
+// ========== TEMPLATE MANAGEMENT ==========
+
+const handleCreateTemplate = async (e: React.FormEvent) => {
+  e.preventDefault()
+  if (!currentUser) return
+
+  try {
+    const { data, error } = await supabase
+      .from('packing_list_templates')
+      .insert({
+        ...newTemplate,
+        user_id: currentUser.id
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    setShowTemplateModal(false)
+    setNewTemplate({
+      name: '',
+      description: '',
+      icon: '🎒',
+      trip_type: '',
+      is_public: false
+    })
+    await loadPackingTemplates()
+    alert('✅ Template erstellt!')
+  } catch (error) {
+    console.error('Error creating template:', error)
+    alert('❌ Fehler beim Erstellen des Templates')
+  }
+}
+
+const handleEditTemplate = async (template: any) => {
+  setEditingTemplate(template)
+  setNewTemplate(template)
+  setShowTemplateModal(true)
+}
+
+const handleUpdateTemplate = async (e: React.FormEvent) => {
+  e.preventDefault()
+  if (!editingTemplate) return
+
+  try {
+    const { error } = await supabase
+      .from('packing_list_templates')
+      .update({
+        ...newTemplate,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', editingTemplate.id)
+
+    if (error) throw error
+
+    setShowTemplateModal(false)
+    setEditingTemplate(null)
+    setNewTemplate({
+      name: '',
+      description: '',
+      icon: '🎒',
+      trip_type: '',
+      is_public: false
+    })
+    await loadPackingTemplates()
+    alert('✅ Template aktualisiert!')
+  } catch (error) {
+    console.error('Error updating template:', error)
+    alert('❌ Fehler beim Aktualisieren')
+  }
+}
+
+const handleDeleteTemplate = async (templateId: string) => {
+  if (!confirm('Template wirklich löschen?')) return
+
+  try {
+    const { error } = await supabase
+      .from('packing_list_templates')
+      .delete()
+      .eq('id', templateId)
+
+    if (error) throw error
+
+    await loadPackingTemplates()
+    alert('✅ Template gelöscht')
+  } catch (error) {
+    console.error('Error deleting template:', error)
+    alert('❌ Fehler beim Löschen')
+  }
+}
+
+// ========== TRIP PACKING LIST MANAGEMENT ==========
+
+const handleCreatePackingList = async (templateId?: string) => {
+  if (!currentTrip) return
+
+  try {
+    if (templateId) {
+      // Use SQL function to copy template
+      const { data, error } = await supabase.rpc('copy_template_to_trip', {
+        p_template_id: templateId,
+        p_trip_id: currentTrip.id,
+        p_list_name: currentTrip.name
+      })
+
+      if (error) throw error
+    } else {
+      // Create empty list
+      const { data, error } = await supabase
+        .from('trip_packing_lists')
+        .insert({
+          trip_id: currentTrip.id,
+          name: currentTrip.name,
+          created_from_template: false
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+    }
+
+    setShowTemplateSelector(false)
+    await loadTripPackingList(currentTrip.id)
+    alert('✅ Packliste erstellt!')
+  } catch (error) {
+    console.error('Error creating packing list:', error)
+    alert('❌ Fehler beim Erstellen der Packliste')
+  }
+}
+
+const handleSaveAsTemplate = async (e: React.FormEvent) => {
+  e.preventDefault()
+  if (!currentUser || !currentTripPackingList) return
+
+  try {
+    // Create template
+    const { data: template, error: templateError } = await supabase
+      .from('packing_list_templates')
+      .insert({
+        ...saveTemplateData,
+        user_id: currentUser.id
+      })
+      .select()
+      .single()
+
+    if (templateError) throw templateError
+
+    // Copy items to template
+    const itemsToInsert = packingItems.map((item, index) => ({
+      template_id: template.id,
+      category: item.category,
+      item: item.item,
+      essential: item.essential,
+      quantity: item.quantity || 1,
+      notes: item.notes,
+      sort_order: index
+    }))
+
+    const { error: itemsError } = await supabase
+      .from('packing_list_template_items')
+      .insert(itemsToInsert)
+
+    if (itemsError) throw itemsError
+
+    setShowSaveAsTemplateModal(false)
+    setSaveTemplateData({
+      name: '',
+      description: '',
+      icon: '🎒',
+      is_public: false
+    })
+    await loadPackingTemplates()
+    alert('✅ Als Template gespeichert!')
+  } catch (error) {
+    console.error('Error saving as template:', error)
+    alert('❌ Fehler beim Speichern')
+  }
+}
+
+const handleAddPackingItem = async (e: React.FormEvent) => {
+  e.preventDefault()
+  if (!currentTripPackingList) return
+
+  try {
+    const { data, error } = await supabase
+      .from('trip_packing_items')
+      .insert({
+        trip_packing_list_id: currentTripPackingList.id,
+        category: newPackingItem.category,
+        item: newPackingItem.item,
+        essential: newPackingItem.essential,
+        packed: false,
+        quantity: 1,
+        sort_order: packingItems.length
+      })
+      .select()
+      .single()
+
+    if (error) throw error
+
+    setShowPackingModal(false)
+    setNewPackingItem({
+      category: '👕 Kleidung',
+      item: '',
+      packed: false,
+      essential: false
+    })
+    await loadTripPackingList(currentTrip!.id)
+  } catch (error) {
+    console.error('Error adding item:', error)
+    alert('❌ Fehler beim Hinzufügen')
+  }
+}
+
+const handleTogglePacked = async (item: any) => {
+  try {
+    const updates: any = {
+      packed: !item.packed,
+      packed_at: !item.packed ? new Date().toISOString() : null
+    }
+
+    if (!item.packed && currentUser) {
+      updates.packed_by = currentUser.id
+    } else if (item.packed) {
+      updates.packed_by = null
+    }
+
+    const { error } = await supabase
+      .from('trip_packing_items')
+      .update(updates)
+      .eq('id', item.id)
+
+    if (error) throw error
+
+    await loadTripPackingList(currentTrip!.id)
+  } catch (error) {
+    console.error('Error toggling packed:', error)
+  }
+}
+
+const handleDeletePackingItem = async (itemId: string) => {
+  if (!confirm('Item wirklich löschen?')) return
+
+  try {
+    const { error } = await supabase
+      .from('trip_packing_items')
+      .delete()
+      .eq('id', itemId)
+
+    if (error) throw error
+
+    await loadTripPackingList(currentTrip!.id)
+  } catch (error) {
+    console.error('Error deleting item:', error)
+    alert('❌ Fehler beim Löschen')
+  }
+}
+
+// ========== useEffect zum Laden ==========
+
+useEffect(() => {
+  if (currentUser) {
+    loadPackingTemplates()
+  }
+}, [currentUser])
+
+useEffect(() => {
+  if (currentTrip && activeTab === 'packing') {
+    loadTripPackingList(currentTrip.id)
+  }
+}, [currentTrip, activeTab])
+
+// =================================================================
+// UI COMPONENTS
+// =================================================================
+
+// ========== TEMPLATE SELECTOR MODAL ==========
+
+const TemplateSelectorModal = () => (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="sticky top-0 bg-white border-b p-6 z-10">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold">Packliste erstellen</h2>
+          <button
+            onClick={() => setShowTemplateSelector(false)}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            ✕
+          </button>
+        </div>
+        <p className="text-gray-600">
+          Wähle ein Template aus oder erstelle eine leere Packliste
+        </p>
+      </div>
+
+      <div className="p-6">
+        {/* Leere Packliste */}
+        <div
+          onClick={() => handleCreatePackingList()}
+          className="border-2 border-dashed border-gray-300 rounded-lg p-6 mb-6 hover:border-blue-500 hover:bg-blue-50 cursor-pointer transition-all"
+        >
+          <div className="text-center">
+            <div className="text-4xl mb-2">📝</div>
+            <h3 className="font-bold text-lg mb-1">Leere Packliste</h3>
+            <p className="text-sm text-gray-600">
+              Erstelle eine neue Packliste von Grund auf
+            </p>
+          </div>
+        </div>
+
+        {/* Templates */}
+        <h3 className="font-bold mb-4">Aus Template erstellen</h3>
+        <div className="grid md:grid-cols-2 gap-4">
+          {packingTemplates.map(template => (
+            <div
+              key={template.id}
+              onClick={() => handleCreatePackingList(template.id)}
+              className="border rounded-lg p-4 hover:border-blue-500 hover:bg-blue-50 cursor-pointer transition-all"
+            >
+              <div className="flex items-start gap-3">
+                <div className="text-3xl">{template.icon}</div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h4 className="font-bold">{template.name}</h4>
+                    {template.is_public && (
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                        Öffentlich
+                      </span>
+                    )}
+                  </div>
+                  {template.description && (
+                    <p className="text-sm text-gray-600 mb-2">
+                      {template.description}
+                    </p>
+                  )}
+                  {template.trip_type && (
+                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                      {template.trip_type}
+                    </span>
+                  )}
+                  <div className="text-xs text-gray-500 mt-2">
+                    {template.use_count}× verwendet
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {packingTemplates.length === 0 && (
+          <div className="text-center py-8 text-gray-500">
+            Noch keine Templates vorhanden
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+)
+
+// ========== SAVE AS TEMPLATE MODAL ==========
+
+const SaveAsTemplateModal = () => (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-xl max-w-lg w-full">
+      <div className="border-b p-6">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-2xl font-bold">Als Template speichern</h2>
+          <button
+            onClick={() => setShowSaveAsTemplateModal(false)}
+            className="text-gray-400 hover:text-gray-600"
+          >
+            ✕
+          </button>
+        </div>
+        <p className="text-sm text-gray-600">
+          Speichere diese Packliste als wiederverwendbares Template
+        </p>
+      </div>
+
+      <form onSubmit={handleSaveAsTemplate} className="p-6 space-y-4">
+        {/* Icon Selection */}
+        <div>
+          <label className="block text-sm font-medium mb-2">Icon</label>
+          <div className="flex flex-wrap gap-2">
+            {templateIcons.map(icon => (
+              <button
+                key={icon}
+                type="button"
+                onClick={() => setSaveTemplateData({ ...saveTemplateData, icon })}
+                className={`text-2xl p-2 rounded hover:bg-gray-100 ${
+                  saveTemplateData.icon === icon ? 'bg-blue-100 ring-2 ring-blue-500' : ''
+                }`}
+              >
+                {icon}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Name */}
+        <div>
+          <label className="block text-sm font-medium mb-2">Name *</label>
+          <input
+            type="text"
+            value={saveTemplateData.name}
+            onChange={e => setSaveTemplateData({ ...saveTemplateData, name: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg"
+            placeholder="z.B. Strandurlaub, Städtetrip"
+            required
+          />
+        </div>
+
+        {/* Description */}
+        <div>
+          <label className="block text-sm font-medium mb-2">Beschreibung</label>
+          <textarea
+            value={saveTemplateData.description}
+            onChange={e => setSaveTemplateData({ ...saveTemplateData, description: e.target.value })}
+            className="w-full px-4 py-2 border rounded-lg"
+            rows={3}
+            placeholder="Wofür ist dieses Template gedacht?"
+          />
+        </div>
+
+        {/* Public */}
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="is_public"
+            checked={saveTemplateData.is_public}
+            onChange={e => setSaveTemplateData({ ...saveTemplateData, is_public: e.target.checked })}
+            className="rounded"
+          />
+          <label htmlFor="is_public" className="text-sm">
+            Als öffentliches Template teilen
+          </label>
+        </div>
+
+        {/* Info */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+          📋 Es werden alle {packingItems.length} Items aus der aktuellen Packliste übernommen
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-3 pt-4">
+          <button
+            type="button"
+            onClick={() => setShowSaveAsTemplateModal(false)}
+            className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
+          >
+            Abbrechen
+          </button>
+          <button
+            type="submit"
+            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Template speichern
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+)
+
+// ========== PACKING LIST VIEW ==========
+
+const PackingListView = () => {
+  if (!currentTripPackingList) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-6xl mb-4">🎒</div>
+        <h3 className="text-xl font-bold mb-2">Keine Packliste vorhanden</h3>
+        <p className="text-gray-600 mb-6">
+          Erstelle eine neue Packliste oder verwende ein Template
+        </p>
+        <button
+          onClick={() => setShowTemplateSelector(true)}
+          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          Packliste erstellen
+        </button>
+      </div>
+    )
+  }
+
+  // Group items by category
+  const groupedItems = packingItems.reduce((acc, item) => {
+    if (!acc[item.category]) acc[item.category] = []
+    acc[item.category].push(item)
+    return acc
+  }, {} as Record<string, any[]>)
+
+  const filteredCategories = Object.entries(groupedItems).filter(([_, items]) => {
+    if (packingFilter === 'all') return true
+    if (packingFilter === 'packed') return items.some(i => i.packed)
+    if (packingFilter === 'unpacked') return items.some(i => !i.packed)
+    if (packingFilter === 'essential') return items.some(i => i.essential)
+    return true
+  })
+
+  return (
+    <div>
+      {/* Header with Stats */}
+      <div className="bg-white rounded-xl p-6 mb-6 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-2xl font-bold mb-1">{currentTripPackingList.name}</h2>
+            {currentTripPackingList.template && (
+              <p className="text-sm text-gray-600">
+                📋 Basiert auf Template: {currentTripPackingList.template.name}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={() => setShowSaveAsTemplateModal(true)}
+            className="px-4 py-2 border rounded-lg hover:bg-gray-50 text-sm"
+          >
+            💾 Als Template speichern
+          </button>
+        </div>
+
+        {/* Progress Bar */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span>Fortschritt</span>
+            <span className="font-bold">{packingStats.progress}%</span>
+          </div>
+          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-green-500 transition-all duration-300"
+              style={{ width: `${packingStats.progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">{packingStats.total}</div>
+            <div className="text-xs text-gray-600">Gesamt</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-green-600">{packingStats.packed}</div>
+            <div className="text-xs text-gray-600">Gepackt</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-orange-600">{packingStats.unpacked}</div>
+            <div className="text-xs text-gray-600">Offen</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-red-600">
+              {packingStats.essential - packingStats.essentialPacked}
+            </div>
+            <div className="text-xs text-gray-600">Wichtig offen</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter & Actions */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="flex-1 flex gap-2">
+          {['all', 'unpacked', 'packed', 'essential'].map(filter => (
+            <button
+              key={filter}
+              onClick={() => setPackingFilter(filter)}
+              className={`px-4 py-2 rounded-lg text-sm ${
+                packingFilter === filter
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white border hover:bg-gray-50'
+              }`}
+            >
+              {filter === 'all' && 'Alle'}
+              {filter === 'unpacked' && 'Offen'}
+              {filter === 'packed' && 'Gepackt'}
+              {filter === 'essential' && 'Wichtig'}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => {
+            setEditingPackingItem(null)
+            setShowPackingModal(true)
+          }}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          + Item hinzufügen
+        </button>
+      </div>
+
+      {/* Items by Category */}
+      <div className="space-y-4">
+        {filteredCategories.map(([category, items]) => {
+          const visibleItems = items.filter(item => {
+            if (packingFilter === 'packed') return item.packed
+            if (packingFilter === 'unpacked') return !item.packed
+            if (packingFilter === 'essential') return item.essential
+            return true
+          })
+
+          if (visibleItems.length === 0) return null
+
+          const packedCount = items.filter(i => i.packed).length
+
+          return (
+            <div key={category} className="bg-white rounded-xl p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold flex items-center gap-2">
+                  <span>{category}</span>
+                  <span className="text-sm font-normal text-gray-500">
+                    ({packedCount}/{items.length})
+                  </span>
+                </h3>
+              </div>
+
+              <div className="space-y-2">
+                {visibleItems.map(item => (
+                  <div
+                    key={item.id}
+                    className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${
+                      item.packed
+                        ? 'bg-green-50 border-green-200'
+                        : item.essential
+                        ? 'bg-red-50 border-red-200'
+                        : 'bg-gray-50 border-gray-200'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={item.packed}
+                      onChange={() => handleTogglePacked(item)}
+                      className="w-5 h-5 rounded"
+                    />
+                    <div className="flex-1">
+                      <div className={`font-medium ${item.packed ? 'line-through text-gray-500' : ''}`}>
+                        {item.item}
+                        {item.quantity > 1 && (
+                          <span className="text-sm text-gray-500 ml-2">
+                            ({item.quantity}×)
+                          </span>
+                        )}
+                      </div>
+                      {item.notes && (
+                        <div className="text-sm text-gray-600 mt-1">{item.notes}</div>
+                      )}
+                    </div>
+                    {item.essential && !item.packed && (
+                      <span className="text-red-600 text-xl">⚠️</span>
+                    )}
+                    <button
+                      onClick={() => handleDeletePackingItem(item.id)}
+                      className="text-red-600 hover:text-red-700 text-sm"
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {packingItems.length === 0 && (
+        <div className="text-center py-12 text-gray-500">
+          Noch keine Items in der Packliste
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ========== MODALS RENDERN ==========
+// In der Hauptkomponente diese Modals hinzufügen:
+
+{showTemplateSelector && <TemplateSelectorModal />}
+{showSaveAsTemplateModal && <SaveAsTemplateModal />}
+
+
   // ========== LOCATION AUTOCOMPLETE STATE (für Itinerary) ==========
   const [locationSuggestions, setLocationSuggestions] = useState<any[]>([])
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
