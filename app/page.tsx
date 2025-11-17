@@ -766,7 +766,7 @@ const PackingListView = () => {
     return acc
   }, {} as Record<string, any[]>)
 
-const filteredCategories = Object.entries(groupedItems).filter(([_, items]) => {
+const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).filter(([_, items]) => {
   const itemsArray = items as any[]
   if (packingFilter === 'all') return true
   if (packingFilter === 'packed') return itemsArray.some(i => i.packed)
@@ -866,7 +866,7 @@ const filteredCategories = Object.entries(groupedItems).filter(([_, items]) => {
 
       {/* Items by Category */}
       <div className="space-y-4">
-        {filteredCategories.map(([category, items]) => {
+        {filteredCategories.map(([category, items]: [string, any[]]) => {
           const visibleItems = items.filter(item => {
             if (packingFilter === 'packed') return item.packed
             if (packingFilter === 'unpacked') return !item.packed
