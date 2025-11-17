@@ -766,11 +766,12 @@ const PackingListView = () => {
     return acc
   }, {} as Record<string, any[]>)
 
-const filteredCategories = Object.entries(groupedItems).filter(([_, items]: [string, any[]]) => {
+const filteredCategories = Object.entries(groupedItems).filter(([_, items]) => {
+  const itemsArray = items as any[]
   if (packingFilter === 'all') return true
-  if (packingFilter === 'packed') return items.some(i => i.packed)
-  if (packingFilter === 'unpacked') return items.some(i => !i.packed)
-  if (packingFilter === 'essential') return items.some(i => i.essential)
+  if (packingFilter === 'packed') return itemsArray.some(i => i.packed)
+  if (packingFilter === 'unpacked') return itemsArray.some(i => !i.packed)
+  if (packingFilter === 'essential') return itemsArray.some(i => i.essential)
   return true
 })
 
