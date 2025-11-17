@@ -162,6 +162,7 @@ const packingCategories = [
 // ========== NEUE STATE VARIABLEN (zu den bestehenden hinzufügen) ==========
 
 const [packingTemplates, setPackingTemplates] = useState<any[]>([])
+const [otherTripsPackingLists, setOtherTripsPackingLists] = useState<any[]>([])
 const [showTemplateModal, setShowTemplateModal] = useState(false)
 const [showTemplateSelector, setShowTemplateSelector] = useState(false)
 const [showSaveAsTemplateModal, setShowSaveAsTemplateModal] = useState(false)
@@ -216,6 +217,50 @@ const loadPackingTemplates = async () => {
     setPackingTemplates(data || [])
   } catch (error) {
     console.error('Error loading templates:', error)
+  }
+}
+
+const loadOtherTripsPackingLists = async () => {
+  if (!currentUser || !currentTrip) return
+  
+  try {
+    // Load all trips with their packing lists
+    const { data: trips, error: tripsError } = await supabase
+      .from('trips')
+      .select(`
+        id,
+        name,
+        flag,
+        destination,
+        status,
+        trip_packing_lists!inner (
+          id,
+          name,
+          created_at
+        )
+      `)
+      .eq('created_by', currentUser.id)
+      .neq('id', currentTrip.id) // Exclude current trip
+      .order('created_at', { ascending: false })
+
+    if (tripsError) throw tripsError
+
+    // Flatten the structure
+    const packingLists = trips?.map(trip => ({
+      id: trip.trip_packing_lists[0].id,
+      trip_id: trip.id,
+      trip_name: trip.name,
+      trip_flag: trip.flag,
+      trip_destination: trip.destination,
+      trip_status: trip.status,
+      list_name: trip.trip_packing_lists[0].name,
+      created_at: trip.trip_packing_lists[0].created_at
+    })) || []
+
+    setOtherTripsPackingLists(packingLists)
+  } catch (error) {
+    console.error('Error loading other trips packing lists:', error)
+    setOtherTripsPackingLists([])
   }
 }
 
@@ -367,7 +412,7 @@ const handleDeleteTemplate = async (templateId: string) => {
 
 // ========== TRIP PACKING LIST MANAGEMENT ==========
 
-const handleCreatePackingList = async (templateId?: string) => {
+const handleCreatePackingList = async (templateId?: string, fromTripPackingListId?: string) => {
   if (!currentTrip) return
 
   try {
@@ -380,6 +425,48 @@ const handleCreatePackingList = async (templateId?: string) => {
       })
 
       if (error) throw error
+    } else if (fromTripPackingListId) {
+      // Copy from another trip's packing list
+      // First, get the items from the source packing list
+      const { data: sourceItems, error: itemsError } = await supabase
+        .from('trip_packing_items')
+        .select('*')
+        .eq('trip_packing_list_id', fromTripPackingListId)
+
+      if (itemsError) throw itemsError
+
+      // Create new packing list for current trip
+      const { data: newList, error: listError } = await supabase
+        .from('trip_packing_lists')
+        .insert({
+          trip_id: currentTrip.id,
+          name: currentTrip.name,
+          created_from_template: false
+        })
+        .select()
+        .single()
+
+      if (listError) throw listError
+
+      // Copy items to new list (reset packed status)
+      if (sourceItems && sourceItems.length > 0) {
+        const newItems = sourceItems.map(item => ({
+          trip_packing_list_id: newList.id,
+          category: item.category,
+          item: item.item,
+          essential: item.essential,
+          packed: false, // Reset packed status
+          quantity: item.quantity || 1,
+          notes: item.notes,
+          sort_order: item.sort_order
+        }))
+
+        const { error: insertError } = await supabase
+          .from('trip_packing_items')
+          .insert(newItems)
+
+        if (insertError) throw insertError
+      }
     } else {
       // Create empty list
       const { data, error } = await supabase
@@ -546,6 +633,12 @@ useEffect(() => {
   }
 }, [currentTrip, activeTab])
 
+useEffect(() => {
+  if (showTemplateSelector && currentUser && currentTrip) {
+    loadOtherTripsPackingLists()
+  }
+}, [showTemplateSelector, currentUser, currentTrip])
+
 // =================================================================
 // UI COMPONENTS
 // =================================================================
@@ -566,15 +659,15 @@ const TemplateSelectorModal = () => (
           </button>
         </div>
         <p className="text-gray-600">
-          Wähle ein Template aus oder erstelle eine leere Packliste
+          Wähle eine Vorlage, kopiere von einer anderen Reise oder erstelle eine leere Liste
         </p>
       </div>
 
-      <div className="p-6">
+      <div className="p-6 space-y-6">
         {/* Leere Packliste */}
         <div
           onClick={() => handleCreatePackingList()}
-          className="border-2 border-dashed border-gray-300 rounded-lg p-6 mb-6 hover:border-blue-500 hover:bg-blue-50 cursor-pointer transition-all"
+          className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-blue-500 hover:bg-blue-50 cursor-pointer transition-all"
         >
           <div className="text-center">
             <div className="text-4xl mb-2">📝</div>
@@ -585,48 +678,101 @@ const TemplateSelectorModal = () => (
           </div>
         </div>
 
-        {/* Templates */}
-        <h3 className="font-bold mb-4">Aus Template erstellen</h3>
-        <div className="grid md:grid-cols-2 gap-4">
-          {packingTemplates.map(template => (
-            <div
-              key={template.id}
-              onClick={() => handleCreatePackingList(template.id)}
-              className="border rounded-lg p-4 hover:border-blue-500 hover:bg-blue-50 cursor-pointer transition-all"
-            >
-              <div className="flex items-start gap-3">
-                <div className="text-3xl">{template.icon}</div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-bold">{template.name}</h4>
-                    {template.is_public && (
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                        Öffentlich
-                      </span>
-                    )}
-                  </div>
-                  {template.description && (
-                    <p className="text-sm text-gray-600 mb-2">
-                      {template.description}
-                    </p>
-                  )}
-                  {template.trip_type && (
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                      {template.trip_type}
-                    </span>
-                  )}
-                  <div className="text-xs text-gray-500 mt-2">
-                    {template.use_count}× verwendet
+        {/* Packlisten von anderen Reisen */}
+        {otherTripsPackingLists.length > 0 && (
+          <div>
+            <h3 className="font-bold mb-4 flex items-center gap-2">
+              <span>✈️</span> Aus anderen Reisen kopieren
+            </h3>
+            <div className="grid md:grid-cols-2 gap-4">
+              {otherTripsPackingLists.map(list => (
+                <div
+                  key={list.id}
+                  onClick={() => handleCreatePackingList(undefined, list.id)}
+                  className="border rounded-lg p-4 hover:border-teal-500 hover:bg-teal-50 cursor-pointer transition-all"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="text-3xl">{list.trip_flag}</div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-bold">{list.trip_name}</h4>
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          list.trip_status === 'active' 
+                            ? 'bg-green-100 text-green-700' 
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {list.trip_status === 'active' ? 'Aktiv' : 'Archiviert'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 mb-2">
+                        {list.trip_destination}
+                      </p>
+                      <div className="text-xs text-gray-500">
+                        {new Date(list.created_at).toLocaleDateString('de-DE')}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        )}
 
-        {packingTemplates.length === 0 && (
-          <div className="text-center py-8 text-gray-500">
-            Noch keine Templates vorhanden
+        {/* Gespeicherte Templates */}
+        {packingTemplates.length > 0 && (
+          <div>
+            <h3 className="font-bold mb-4 flex items-center gap-2">
+              <span>🎒</span> Aus gespeicherten Vorlagen
+            </h3>
+            <div className="grid md:grid-cols-2 gap-4">
+              {packingTemplates.map(template => (
+                <div
+                  key={template.id}
+                  onClick={() => handleCreatePackingList(template.id)}
+                  className="border rounded-lg p-4 hover:border-purple-500 hover:bg-purple-50 cursor-pointer transition-all"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="text-3xl">{template.icon}</div>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-bold">{template.name}</h4>
+                        {template.is_public && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
+                            Öffentlich
+                          </span>
+                        )}
+                      </div>
+                      {template.description && (
+                        <p className="text-sm text-gray-600 mb-2">
+                          {template.description}
+                        </p>
+                      )}
+                      {template.trip_type && (
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                          {template.trip_type}
+                        </span>
+                      )}
+                      <div className="text-xs text-gray-500 mt-2">
+                        {template.use_count}× verwendet
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Keine anderen Listen vorhanden */}
+        {otherTripsPackingLists.length === 0 && packingTemplates.length === 0 && (
+          <div className="text-center py-8">
+            <span className="text-6xl mb-4 block">🎒</span>
+            <p className="text-gray-600 mb-2">
+              Noch keine Vorlagen oder andere Reisen mit Packlisten vorhanden
+            </p>
+            <p className="text-sm text-gray-500">
+              Erstelle eine leere Packliste oder speichere zukünftige Listen als Vorlagen
+            </p>
           </div>
         )}
       </div>
