@@ -24,6 +24,7 @@ export default function TravelTrackerApp() {
   const [showNewTripModal, setShowNewTripModal] = useState(false)
   const [showEditTripModal, setShowEditTripModal] = useState(false)
   const [editingTrip, setEditingTrip] = useState<any>(null)
+  const [tripStatusFilter, setTripStatusFilter] = useState<'all' | 'active' | 'archived'>('active')
   const [newTripData, setNewTripData] = useState({
     name: '',
     destination: '',
@@ -1236,6 +1237,30 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
       await loadAllTrips()
       if (currentTrip?.id === tripId) {
         setCurrentTrip(allUserTrips[0] || null)
+      }
+    } catch (error: any) {
+      setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    }
+  }
+
+  const toggleTripArchiveStatus = async (tripId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'active' ? 'archived' : 'active'
+    const actionText = newStatus === 'archived' ? 'archiviert' : 'wieder aktiviert'
+    
+    try {
+      const { error } = await supabase
+        .from('trips')
+        .update({ status: newStatus })
+        .eq('id', tripId)
+
+      if (error) throw error
+
+      setAuthMessage({ type: 'success', text: `✅ Reise ${actionText}!` })
+      await loadAllTrips()
+      
+      // Update currentTrip if it's the one being toggled
+      if (currentTrip?.id === tripId) {
+        setCurrentTrip({ ...currentTrip, status: newStatus })
       }
     } catch (error: any) {
       setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
@@ -2485,6 +2510,14 @@ const getSettlementStats = () => {
   }
 
   const renderTripsTab = () => {
+    // Filter trips based on status
+    const filteredTrips = tripStatusFilter === 'all' 
+      ? allUserTrips 
+      : allUserTrips.filter(trip => trip.status === tripStatusFilter)
+
+    const activeCount = allUserTrips.filter(t => t.status === 'active').length
+    const archivedCount = allUserTrips.filter(t => t.status === 'archived').length
+
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -2497,25 +2530,90 @@ const getSettlementStats = () => {
           </button>
         </div>
 
-        {allUserTrips.length === 0 ? (
+        {/* Filter Buttons */}
+        <div className="flex gap-2 bg-white rounded-lg shadow p-2">
+          <button
+            onClick={() => setTripStatusFilter('active')}
+            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+              tripStatusFilter === 'active'
+                ? 'bg-green-100 text-green-700 shadow-sm'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <span className="flex items-center justify-center gap-2">
+              🟢 Aktiv
+              {activeCount > 0 && (
+                <span className="bg-green-200 text-green-800 px-2 py-0.5 rounded-full text-xs font-bold">
+                  {activeCount}
+                </span>
+              )}
+            </span>
+          </button>
+          <button
+            onClick={() => setTripStatusFilter('archived')}
+            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+              tripStatusFilter === 'archived'
+                ? 'bg-gray-100 text-gray-700 shadow-sm'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <span className="flex items-center justify-center gap-2">
+              📦 Archiviert
+              {archivedCount > 0 && (
+                <span className="bg-gray-300 text-gray-800 px-2 py-0.5 rounded-full text-xs font-bold">
+                  {archivedCount}
+                </span>
+              )}
+            </span>
+          </button>
+          <button
+            onClick={() => setTripStatusFilter('all')}
+            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+              tripStatusFilter === 'all'
+                ? 'bg-teal-100 text-teal-700 shadow-sm'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <span className="flex items-center justify-center gap-2">
+              📋 Alle
+              {allUserTrips.length > 0 && (
+                <span className="bg-teal-200 text-teal-800 px-2 py-0.5 rounded-full text-xs font-bold">
+                  {allUserTrips.length}
+                </span>
+              )}
+            </span>
+          </button>
+        </div>
+
+        {filteredTrips.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-lg shadow">
-            <span className="text-6xl mb-4 block">✈️</span>
-            <p className="text-gray-600 mb-4">Noch keine Reisen geplant</p>
-            <button
-              onClick={() => setShowNewTripModal(true)}
-              className="px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
-            >
-              Erste Reise erstellen
-            </button>
+            <span className="text-6xl mb-4 block">
+              {tripStatusFilter === 'archived' ? '📦' : '✈️'}
+            </span>
+            <p className="text-gray-600 mb-4">
+              {tripStatusFilter === 'archived' 
+                ? 'Keine archivierten Reisen' 
+                : tripStatusFilter === 'active'
+                ? 'Noch keine aktiven Reisen'
+                : 'Noch keine Reisen geplant'}
+            </p>
+            {tripStatusFilter === 'active' && (
+              <button
+                onClick={() => setShowNewTripModal(true)}
+                className="px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+              >
+                Erste Reise erstellen
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {allUserTrips.map(trip => (
+            {filteredTrips.map(trip => (
               <div
                 key={trip.id}
                 className={`bg-white rounded-lg shadow p-6 cursor-pointer transition-all ${
                   currentTrip?.id === trip.id ? 'ring-2 ring-teal-600' : 'hover:shadow-lg'
-                }`}
+                } ${trip.status === 'archived' ? 'opacity-75' : ''}`}
                 onClick={() => setCurrentTrip(trip)}
               >
                 <div className="flex items-start justify-between mb-4">
@@ -2526,6 +2624,20 @@ const getSettlementStats = () => {
                     <p className="text-gray-600">{trip.destination}</p>
                   </div>
                   <div className="flex gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleTripArchiveStatus(trip.id, trip.status)
+                      }}
+                      className={`p-2 rounded transition-colors ${
+                        trip.status === 'active' 
+                          ? 'hover:bg-gray-100 text-gray-600' 
+                          : 'hover:bg-green-100 text-green-600'
+                      }`}
+                      title={trip.status === 'active' ? 'Archivieren' : 'Reaktivieren'}
+                    >
+                      {trip.status === 'active' ? '📦' : '🔄'}
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -2559,7 +2671,7 @@ const getSettlementStats = () => {
                   <span className={`px-2 py-1 rounded ${
                     trip.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
                   }`}>
-                    {trip.status === 'active' ? 'Aktiv' : 'Archiviert'}
+                    {trip.status === 'active' ? '🟢 Aktiv' : '📦 Archiviert'}
                   </span>
                   <span className="text-gray-600">
                     👥 {trip.memberCount || 0} Mitglieder
@@ -4383,9 +4495,14 @@ const renderTabContent = () => {
                 onChange={(e) => setEditingTrip({...editingTrip, status: e.target.value})}
                 className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
               >
-                <option value="active">Aktiv</option>
-                <option value="archived">Archiviert</option>
+                <option value="active">🟢 Aktiv</option>
+                <option value="archived">📦 Archiviert</option>
               </select>
+              <p className="text-xs text-gray-500 mt-1">
+                {editingTrip.status === 'archived' 
+                  ? '📦 Archivierte Reisen bleiben sichtbar, werden aber ausgeblendet'
+                  : '🟢 Aktive Reisen werden standardmäßig angezeigt'}
+              </p>
             </div>
           </div>
 
