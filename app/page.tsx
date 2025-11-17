@@ -2596,7 +2596,7 @@ const getSettlementStats = () => {
     if (currentTrip) {
       loadTripMembers(currentTrip.id)
       loadExpenses(currentTrip.id)
-      loadPackingItems(currentTrip.id)
+      loadTripPackingList(currentTrip.id)  // Use new system
       loadItineraryItems(currentTrip.id)
       loadLocations(currentTrip.id)
       loadPendingInvitations(currentTrip.id)
@@ -3106,23 +3106,53 @@ const getSettlementStats = () => {
                 📋 Aus Vorlage erstellen
               </button>
             )}
-            <button
-              onClick={() => {
-                setEditingPackingItem(null)
-                setNewPackingItem({
-                  category: '👕 Kleidung',
-                  item: '',
-                  packed: false,
-                  essential: false
-                })
-                setShowPackingModal(true)
-              }}
-              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
-            >
-              + Item hinzufügen
-            </button>
+            {/* Show save as template button always when items exist */}
+            {packingItems.length > 0 && (
+              <button
+                onClick={() => setShowSaveAsTemplateModal(true)}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+              >
+                💾 Als Vorlage speichern
+              </button>
+            )}
+            {/* Only show add item if trip is not archived */}
+            {currentTrip.status !== 'archived' && (
+              <button
+                onClick={() => {
+                  setEditingPackingItem(null)
+                  setNewPackingItem({
+                    category: '👕 Kleidung',
+                    item: '',
+                    packed: false,
+                    essential: false
+                  })
+                  setShowPackingModal(true)
+                }}
+                className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+              >
+                + Item hinzufügen
+              </button>
+            )}
           </div>
         </div>
+
+        {/* Info für archivierte Reisen */}
+        {currentTrip.status === 'archived' && packingItems.length > 0 && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">ℹ️</span>
+              <div className="flex-1">
+                <h3 className="font-semibold text-blue-900 mb-1">
+                  Archivierte Reise (Nur Ansicht)
+                </h3>
+                <p className="text-sm text-blue-700">
+                  Diese Reise ist archiviert. Du kannst die Packliste ansehen und als Vorlage speichern,
+                  aber keine Änderungen mehr vornehmen.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Info Card wenn Packliste leer */}
         {packingItems.length === 0 && (
@@ -3326,7 +3356,10 @@ const getSettlementStats = () => {
                           type="checkbox"
                           checked={item.packed}
                           onChange={() => togglePackedStatus(item)}
-                          className="w-5 h-5 text-teal-600 rounded focus:ring-2 focus:ring-teal-500 cursor-pointer"
+                          disabled={currentTrip.status === 'archived'}
+                          className={`w-5 h-5 text-teal-600 rounded focus:ring-2 focus:ring-teal-500 ${
+                            currentTrip.status === 'archived' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                          }`}
                         />
                         <div className="flex-1">
                           <span className={`${item.packed ? 'line-through text-gray-500' : ''}`}>
@@ -3336,29 +3369,31 @@ const getSettlementStats = () => {
                             <span className="ml-2 text-yellow-500">⭐</span>
                           )}
                         </div>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => {
-                              setEditingPackingItem(item)
-                              setNewPackingItem({
-                                category: item.category,
-                                item: item.item,
-                                packed: item.packed,
-                                essential: item.essential
-                              })
-                              setShowPackingModal(true)
-                            }}
-                            className="p-1 hover:bg-white rounded"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            onClick={() => deletePackingItem(item.id)}
-                            className="p-1 hover:bg-red-100 rounded text-red-600"
-                          >
-                            🗑️
-                          </button>
-                        </div>
+                        {currentTrip.status !== 'archived' && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingPackingItem(item)
+                                setNewPackingItem({
+                                  category: item.category,
+                                  item: item.item,
+                                  packed: item.packed,
+                                  essential: item.essential
+                                })
+                                setShowPackingModal(true)
+                              }}
+                              className="p-1 hover:bg-white rounded"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => deletePackingItem(item.id)}
+                              className="p-1 hover:bg-red-100 rounded text-red-600"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
