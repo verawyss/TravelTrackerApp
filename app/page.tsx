@@ -24,7 +24,7 @@ export default function TravelTrackerApp() {
   const [showNewTripModal, setShowNewTripModal] = useState(false)
   const [showEditTripModal, setShowEditTripModal] = useState(false)
   const [editingTrip, setEditingTrip] = useState<any>(null)
-  const [tripStatusFilter, setTripStatusFilter] = useState<'all' | 'active' | 'archived'>('active')
+  const [tripStatusFilter, setTripStatusFilter] = useState<'all' | 'active' | 'finished' | 'archived'>('active')
   const [newTripData, setNewTripData] = useState({
     name: '',
     destination: '',
@@ -1130,6 +1130,18 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
         // Load packing items for the first trip
         await loadPackingItems(data[0].id)
       }
+
+      // Auto-archive finished trips
+      if (data && data.length > 0) {
+        const finishedActiveTrips = data.filter(trip => 
+          trip.status === 'active' && trip.end_date && isTripFinished(trip)
+        )
+        if (finishedActiveTrips.length > 0) {
+          console.log(`📦 Auto-archiving ${finishedActiveTrips.length} finished trips`)
+          // Auto-archive in background
+          setTimeout(() => autoArchiveFinishedTrips(), 1000)
+        }
+      }
     } catch (error) {
       console.error('❌ Error loading trips:', error)
     }
@@ -1264,6 +1276,44 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
       }
     } catch (error: any) {
       setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+    }
+  }
+
+  // Check if trip is finished based on end_date
+  const isTripFinished = (trip: any) => {
+    if (!trip.end_date) return false
+    const endDate = new Date(trip.end_date)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return endDate < today
+  }
+
+  // Auto-archive finished trips
+  const autoArchiveFinishedTrips = async () => {
+    try {
+      const tripsToArchive = allUserTrips.filter(trip => 
+        trip.status === 'active' && isTripFinished(trip)
+      )
+
+      if (tripsToArchive.length === 0) return
+
+      const tripIds = tripsToArchive.map(t => t.id)
+      const { error } = await supabase
+        .from('trips')
+        .update({ status: 'archived' })
+        .in('id', tripIds)
+
+      if (error) throw error
+
+      if (tripsToArchive.length > 0) {
+        setAuthMessage({ 
+          type: 'success', 
+          text: `✅ ${tripsToArchive.length} abgeschlossene Reise(n) automatisch archiviert!` 
+        })
+        await loadAllTrips()
+      }
+    } catch (error: any) {
+      console.error('Auto-archive error:', error)
     }
   }
 
@@ -2513,9 +2563,14 @@ const getSettlementStats = () => {
     // Filter trips based on status
     const filteredTrips = tripStatusFilter === 'all' 
       ? allUserTrips 
-      : allUserTrips.filter(trip => trip.status === tripStatusFilter)
+      : tripStatusFilter === 'active'
+      ? allUserTrips.filter(trip => trip.status === 'active' && !isTripFinished(trip))
+      : tripStatusFilter === 'finished'
+      ? allUserTrips.filter(trip => trip.status === 'active' && isTripFinished(trip))
+      : allUserTrips.filter(trip => trip.status === 'archived')
 
-    const activeCount = allUserTrips.filter(t => t.status === 'active').length
+    const activeCount = allUserTrips.filter(t => t.status === 'active' && !isTripFinished(t)).length
+    const finishedCount = allUserTrips.filter(t => t.status === 'active' && isTripFinished(t)).length
     const archivedCount = allUserTrips.filter(t => t.status === 'archived').length
 
     return (
@@ -2531,16 +2586,16 @@ const getSettlementStats = () => {
         </div>
 
         {/* Filter Buttons */}
-        <div className="flex gap-2 bg-white rounded-lg shadow p-2">
+        <div className="flex gap-2 bg-white rounded-lg shadow p-2 overflow-x-auto">
           <button
             onClick={() => setTripStatusFilter('active')}
-            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+            className={`flex-1 min-w-fit px-4 py-2 rounded-lg font-medium transition-all ${
               tripStatusFilter === 'active'
                 ? 'bg-green-100 text-green-700 shadow-sm'
                 : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
-            <span className="flex items-center justify-center gap-2">
+            <span className="flex items-center justify-center gap-2 whitespace-nowrap">
               🟢 Aktiv
               {activeCount > 0 && (
                 <span className="bg-green-200 text-green-800 px-2 py-0.5 rounded-full text-xs font-bold">
@@ -2550,14 +2605,31 @@ const getSettlementStats = () => {
             </span>
           </button>
           <button
+            onClick={() => setTripStatusFilter('finished')}
+            className={`flex-1 min-w-fit px-4 py-2 rounded-lg font-medium transition-all ${
+              tripStatusFilter === 'finished'
+                ? 'bg-orange-100 text-orange-700 shadow-sm'
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <span className="flex items-center justify-center gap-2 whitespace-nowrap">
+              ⏰ Abgeschlossen
+              {finishedCount > 0 && (
+                <span className="bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full text-xs font-bold">
+                  {finishedCount}
+                </span>
+              )}
+            </span>
+          </button>
+          <button
             onClick={() => setTripStatusFilter('archived')}
-            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+            className={`flex-1 min-w-fit px-4 py-2 rounded-lg font-medium transition-all ${
               tripStatusFilter === 'archived'
                 ? 'bg-gray-100 text-gray-700 shadow-sm'
                 : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
-            <span className="flex items-center justify-center gap-2">
+            <span className="flex items-center justify-center gap-2 whitespace-nowrap">
               📦 Archiviert
               {archivedCount > 0 && (
                 <span className="bg-gray-300 text-gray-800 px-2 py-0.5 rounded-full text-xs font-bold">
@@ -2568,13 +2640,13 @@ const getSettlementStats = () => {
           </button>
           <button
             onClick={() => setTripStatusFilter('all')}
-            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+            className={`flex-1 min-w-fit px-4 py-2 rounded-lg font-medium transition-all ${
               tripStatusFilter === 'all'
                 ? 'bg-teal-100 text-teal-700 shadow-sm'
                 : 'text-gray-600 hover:bg-gray-50'
             }`}
           >
-            <span className="flex items-center justify-center gap-2">
+            <span className="flex items-center justify-center gap-2 whitespace-nowrap">
               📋 Alle
               {allUserTrips.length > 0 && (
                 <span className="bg-teal-200 text-teal-800 px-2 py-0.5 rounded-full text-xs font-bold">
@@ -2588,11 +2660,13 @@ const getSettlementStats = () => {
         {filteredTrips.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-lg shadow">
             <span className="text-6xl mb-4 block">
-              {tripStatusFilter === 'archived' ? '📦' : '✈️'}
+              {tripStatusFilter === 'archived' ? '📦' : tripStatusFilter === 'finished' ? '⏰' : '✈️'}
             </span>
             <p className="text-gray-600 mb-4">
               {tripStatusFilter === 'archived' 
                 ? 'Keine archivierten Reisen' 
+                : tripStatusFilter === 'finished'
+                ? 'Keine abgeschlossenen Reisen'
                 : tripStatusFilter === 'active'
                 ? 'Noch keine aktiven Reisen'
                 : 'Noch keine Reisen geplant'}
@@ -2664,18 +2738,42 @@ const getSettlementStats = () => {
                   <div className="text-sm text-gray-600 mb-3">
                     📅 {new Date(trip.start_date).toLocaleDateString('de-DE')}
                     {trip.end_date && ` - ${new Date(trip.end_date).toLocaleDateString('de-DE')}`}
+                    {trip.status === 'active' && isTripFinished(trip) && (
+                      <span className="ml-2 text-orange-600 font-medium">
+                        ⏰ Abgeschlossen
+                      </span>
+                    )}
                   </div>
                 )}
 
-                <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-4 text-sm flex-wrap">
                   <span className={`px-2 py-1 rounded ${
-                    trip.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
+                    trip.status === 'active' 
+                      ? isTripFinished(trip)
+                        ? 'bg-orange-100 text-orange-700'
+                        : 'bg-green-100 text-green-700'
+                      : 'bg-gray-100 text-gray-700'
                   }`}>
-                    {trip.status === 'active' ? '🟢 Aktiv' : '📦 Archiviert'}
+                    {trip.status === 'active' 
+                      ? isTripFinished(trip) 
+                        ? '⏰ Abgeschlossen' 
+                        : '🟢 Aktiv'
+                      : '📦 Archiviert'}
                   </span>
                   <span className="text-gray-600">
                     👥 {trip.memberCount || 0} Mitglieder
                   </span>
+                  {trip.status === 'active' && isTripFinished(trip) && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleTripArchiveStatus(trip.id, trip.status)
+                      }}
+                      className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
+                    >
+                      Jetzt archivieren
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
