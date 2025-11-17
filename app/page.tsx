@@ -2951,22 +2951,94 @@ const getSettlementStats = () => {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold">Packliste</h2>
-          <button
-            onClick={() => {
-              setEditingPackingItem(null)
-              setNewPackingItem({
-                category: '👕 Kleidung',
-                item: '',
-                packed: false,
-                essential: false
-              })
-              setShowPackingModal(true)
-            }}
-            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
-          >
-            + Item hinzufügen
-          </button>
+          <div className="flex gap-2">
+            {packingItems.length === 0 && (
+              <button
+                onClick={() => setShowTemplateSelector(true)}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+              >
+                📋 Aus Vorlage erstellen
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setEditingPackingItem(null)
+                setNewPackingItem({
+                  category: '👕 Kleidung',
+                  item: '',
+                  packed: false,
+                  essential: false
+                })
+                setShowPackingModal(true)
+              }}
+              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+            >
+              + Item hinzufügen
+            </button>
+          </div>
         </div>
+
+        {/* Info Card wenn Packliste leer */}
+        {packingItems.length === 0 && (
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">💡</span>
+              <div className="flex-1">
+                <h3 className="font-semibold text-purple-900 mb-1">
+                  Keine Packliste für diese Reise
+                </h3>
+                <p className="text-sm text-purple-700 mb-3">
+                  Du kannst entweder eine Vorlage verwenden oder einzelne Items manuell hinzufügen.
+                </p>
+                <button
+                  onClick={() => setShowTemplateSelector(true)}
+                  className="text-sm px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+                >
+                  📋 Vorlage auswählen
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Packliste Options - nur wenn Items vorhanden */}
+        {packingItems.length > 0 && (
+          <div className="bg-white rounded-lg shadow p-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-gray-600 text-sm">Packliste für:</span>
+                <span className="font-semibold">{currentTrip.flag} {currentTrip.name}</span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    if (confirm('⚠️ Möchtest du eine andere Vorlage laden? Die aktuelle Packliste wird ersetzt!')) {
+                      // Delete current packing list first
+                      supabase
+                        .from('trip_packing_lists')
+                        .delete()
+                        .eq('trip_id', currentTrip.id)
+                        .then(() => {
+                          setPackingItems([])
+                          setCurrentTripPackingList(null)
+                          setShowTemplateSelector(true)
+                        })
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 text-sm flex items-center gap-2"
+                >
+                  📋 Andere Vorlage laden
+                </button>
+                <button
+                  onClick={() => setShowSaveAsTemplateModal(true)}
+                  className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm flex items-center gap-2"
+                >
+                  💾 Als Vorlage speichern
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Progress Card */}
         <div className="bg-white rounded-lg shadow p-6">
