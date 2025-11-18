@@ -493,15 +493,40 @@ const handleCreatePackingList = async (templateId?: string, fromTripPackingListI
 
 const handleSaveAsTemplate = async (e: React.FormEvent) => {
   e.preventDefault()
-  if (!currentUser || !currentTripPackingList) return
+  
+  // Validierung
+  if (!currentUser) {
+    setAuthMessage({ type: 'error', text: '❌ Nicht angemeldet!' })
+    return
+  }
+  
+  if (!currentTripPackingList) {
+    setAuthMessage({ type: 'error', text: '❌ Keine Packliste vorhanden!' })
+    return
+  }
+  
+  if (packingItems.length === 0) {
+    setAuthMessage({ type: 'error', text: '❌ Packliste ist leer!' })
+    return
+  }
+  
+  if (!saveTemplateData.name.trim()) {
+    setAuthMessage({ type: 'error', text: '❌ Bitte einen Namen eingeben!' })
+    return
+  }
 
+  setLoadingAction(true)
   try {
     // Create template
     const { data: template, error: templateError } = await supabase
       .from('packing_list_templates')
       .insert({
-        ...saveTemplateData,
-        user_id: currentUser.id
+        name: saveTemplateData.name.trim(),
+        description: saveTemplateData.description?.trim() || null,
+        icon: saveTemplateData.icon,
+        is_public: saveTemplateData.is_public,
+        user_id: currentUser.id,
+        use_count: 0
       })
       .select()
       .single()
@@ -513,9 +538,9 @@ const handleSaveAsTemplate = async (e: React.FormEvent) => {
       template_id: template.id,
       category: item.category,
       item: item.item,
-      essential: item.essential,
+      essential: item.essential || false,
       quantity: item.quantity || 1,
-      notes: item.notes,
+      notes: item.notes || null,
       sort_order: index
     }))
 
@@ -525,6 +550,8 @@ const handleSaveAsTemplate = async (e: React.FormEvent) => {
 
     if (itemsError) throw itemsError
 
+    // Success!
+    setAuthMessage({ type: 'success', text: `✅ Template "${template.name}" gespeichert!` })
     setShowSaveAsTemplateModal(false)
     setSaveTemplateData({
       name: '',
@@ -533,10 +560,11 @@ const handleSaveAsTemplate = async (e: React.FormEvent) => {
       is_public: false
     })
     await loadPackingTemplates()
-    alert('✅ Als Template gespeichert!')
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error saving as template:', error)
-    alert('❌ Fehler beim Speichern')
+    setAuthMessage({ type: 'error', text: `❌ Fehler: ${error.message}` })
+  } finally {
+    setLoadingAction(false)
   }
 }
 
@@ -875,16 +903,26 @@ const renderSaveAsTemplateModal = () => {
         <div className="flex gap-3 pt-4">
           <button
             type="button"
-            onClick={() => setShowSaveAsTemplateModal(false)}
-            className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
+            onClick={() => {
+              setShowSaveAsTemplateModal(false)
+              setSaveTemplateData({
+                name: '',
+                description: '',
+                icon: '🎒',
+                is_public: false
+              })
+            }}
+            disabled={loadingAction}
+            className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Abbrechen
           </button>
           <button
             type="submit"
-            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            disabled={loadingAction || !saveTemplateData.name.trim()}
+            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Template speichern
+            {loadingAction ? 'Speichere...' : 'Template speichern'}
           </button>
         </div>
       </form>
