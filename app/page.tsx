@@ -645,7 +645,10 @@ useEffect(() => {
 
 // ========== TEMPLATE SELECTOR MODAL ==========
 
-const TemplateSelectorModal = () => (
+const renderTemplateSelectorModal = () => {
+  if (!showTemplateSelector) return null
+  
+  return (
   <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
     <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
       <div className="sticky top-0 bg-white border-b p-6 z-10">
@@ -778,11 +781,15 @@ const TemplateSelectorModal = () => (
       </div>
     </div>
   </div>
-)
+  )
+}
 
 // ========== SAVE AS TEMPLATE MODAL ==========
 
-const SaveAsTemplateModal = () => (
+const renderSaveAsTemplateModal = () => {
+  if (!showSaveAsTemplateModal) return null
+  
+  return (
   <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
     <div className="bg-white rounded-xl max-w-lg w-full">
       <div className="border-b p-6">
@@ -883,7 +890,8 @@ const SaveAsTemplateModal = () => (
       </form>
     </div>
   </div>
-)
+  )
+}
 
 // ========== PACKING LIST VIEW ==========
 
@@ -5782,6 +5790,8 @@ const renderTabContent = () => {
       {renderItineraryModal()}
       {renderPackingModal()}
       {renderLocationModal()}
+      {renderTemplateSelectorModal()}
+      {renderSaveAsTemplateModal()}
     </div>
   )
 }
