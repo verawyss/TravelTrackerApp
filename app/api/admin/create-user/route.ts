@@ -1,7 +1,11 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+// ========================================
+// DATEI: app/api/admin/create-user/route.ts
+// ========================================
+// KORRIGIERTE VERSION - Ohne auth-helpers-nextjs
+
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { cookies } from 'next/headers'
 
 export async function POST(request: Request) {
   try {
@@ -22,15 +26,34 @@ export async function POST(request: Request) {
       )
     }
 
-    // Check if user is admin
-    const supabase = createRouteHandlerClient({ cookies })
-    const { data: { session } } = await supabase.auth.getSession()
-
-    if (!session) {
+    // Get auth token from cookie
+    const cookieStore = cookies()
+    const authCookie = cookieStore.get('sb-tpaczpfczbznmabtcpxe-auth-token')
+    
+    if (!authCookie) {
       return NextResponse.json({ error: 'Nicht authentifiziert' }, { status: 401 })
     }
 
-    // Check admin role
+    // Create regular Supabase client to check admin
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+
+    // Get session from cookie value
+    let session
+    try {
+      const authData = JSON.parse(authCookie.value)
+      session = authData
+    } catch (e) {
+      return NextResponse.json({ error: 'Ungültige Session' }, { status: 401 })
+    }
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Keine Session gefunden' }, { status: 401 })
+    }
+
+    // Check if current user is admin
     const { data: currentUser } = await supabase
       .from('users')
       .select('role')
@@ -41,7 +64,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Keine Admin-Berechtigung' }, { status: 403 })
     }
 
-    // ⚠️ WICHTIG: Service Role Key für Admin-Funktionen
+    // Get service role key
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     
     if (!serviceRoleKey) {
