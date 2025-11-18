@@ -15,7 +15,7 @@ export default function TravelTrackerApp() {
   const [loadingAction, setLoadingAction] = useState(false)
 
   // ========== APP STATE ==========
-  const [activeTab, setActiveTab] = useState('trips')
+  const [activeTab, setActiveTab] = useState('overview')
   const [allUserTrips, setAllUserTrips] = useState<any[]>([])
   const [currentTrip, setCurrentTrip] = useState<any>(null)
   const [users, setUsers] = useState<any[]>([])
@@ -2605,58 +2605,90 @@ const getSettlementStats = () => {
 
   // ========== RENDER FUNCTIONS ==========
   const renderOverview = () => {
-    if (!currentTrip) {
-      return (
-        <div className="text-center py-12">
-          <span className="text-6xl mb-4 block">🌍</span>
-          <p className="text-gray-600 mb-4">Keine Reise ausgewählt</p>
-          <button
-            onClick={() => setActiveTab('trips')}
-            className="px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
-          >
-            Reise erstellen
-          </button>
-        </div>
-      )
-    }
+    const totalExpenses = currentTrip ? expenses.reduce((sum, exp) => sum + parseFloat(exp.amount.toString()), 0) : 0
+    const packingProgress = currentTrip ? getPackingProgress() : 0
+    const totalActivities = currentTrip ? itineraryItems.length : 0
+    const tripDays = currentTrip ? getTripDays() : []
 
-    const totalExpenses = expenses.reduce((sum, exp) => sum + parseFloat(exp.amount.toString()), 0)
-    const packingProgress = getPackingProgress()
-    const totalActivities = itineraryItems.length
-    const tripDays = getTripDays()
+    // Filter active trips for dropdown
+    const activeTrips = allUserTrips.filter(t => t.status === 'active' || !isTripFinished(t))
 
     return (
       <div className="space-y-6">
+        {/* Trip Selector */}
         <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h2 className="text-2xl font-bold flex items-center gap-2">
-                {currentTrip.flag} {currentTrip.name}
-              </h2>
-              <p className="text-gray-600">{currentTrip.destination}</p>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex-1 min-w-[250px]">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Reise auswählen
+              </label>
+              <select
+                value={currentTrip?.id || ''}
+                onChange={(e) => {
+                  const trip = allUserTrips.find(t => t.id === e.target.value)
+                  setCurrentTrip(trip || null)
+                }}
+                className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500 text-lg"
+              >
+                <option value="">-- Reise auswählen --</option>
+                {activeTrips.map(trip => (
+                  <option key={trip.id} value={trip.id}>
+                    {trip.flag} {trip.name} - {trip.destination}
+                  </option>
+                ))}
+              </select>
             </div>
             <button
-              onClick={() => {
-                setEditingTrip(currentTrip)
-                setShowEditTripModal(true)
-              }}
-              className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200"
+              onClick={() => setShowNewTripModal(true)}
+              className="px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2 whitespace-nowrap"
             >
-              ✏️ Bearbeiten
+              <span className="text-xl">+</span> Neue Reise
             </button>
           </div>
-
-          {currentTrip.start_date && (
-            <div className="flex gap-4 text-sm text-gray-600">
-              <span>📅 {new Date(currentTrip.start_date).toLocaleDateString('de-DE')}</span>
-              {currentTrip.end_date && (
-                <span>→ {new Date(currentTrip.end_date).toLocaleDateString('de-DE')}</span>
-              )}
-            </div>
-          )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {!currentTrip ? (
+          <div className="text-center py-12 bg-white rounded-lg shadow">
+            <span className="text-6xl mb-4 block">🌍</span>
+            <p className="text-gray-600 mb-4">Keine Reise ausgewählt</p>
+            <p className="text-sm text-gray-500">
+              Wähle eine Reise aus dem Dropdown oder erstelle eine neue
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Trip Info Card */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h2 className="text-2xl font-bold flex items-center gap-2">
+                    {currentTrip.flag} {currentTrip.name}
+                  </h2>
+                  <p className="text-gray-600">{currentTrip.destination}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditingTrip(currentTrip)
+                    setShowEditTripModal(true)
+                  }}
+                  className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200"
+                >
+                  ✏️ Bearbeiten
+                </button>
+              </div>
+
+              {currentTrip.start_date && (
+                <div className="flex gap-4 text-sm text-gray-600">
+                  <span>📅 {new Date(currentTrip.start_date).toLocaleDateString('de-DE')}</span>
+                  {currentTrip.end_date && (
+                    <span>→ {new Date(currentTrip.end_date).toLocaleDateString('de-DE')}</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-3xl">💰</span>
@@ -2701,6 +2733,8 @@ const getSettlementStats = () => {
             <div className="text-sm text-gray-600 mt-1">Mitglieder</div>
           </div>
         </div>
+          </>
+        )}
       </div>
     )
   }
@@ -4490,8 +4524,6 @@ const renderTabContent = () => {
   switch (activeTab) {
     case 'overview':
       return renderOverview()
-    case 'trips':
-      return renderTripsTab()
     case 'expenses':
       return renderExpensesTab()
     case 'itinerary':
@@ -4502,8 +4534,8 @@ const renderTabContent = () => {
       return renderMapTab()
     case 'friends':
       return renderTeamTab()
-    case 'settlement':  // ⬅️ NEU HINZUFÜGEN!
-      return renderSettlementTab()  // ⬅️ NEU HINZUFÜGEN!
+    case 'settlement':
+      return renderSettlementTab()
     case 'admin':
       return renderAdminTab()
     default:
@@ -5697,7 +5729,6 @@ const renderTabContent = () => {
           <div className="flex overflow-x-auto">
             {[
               { id: 'overview', icon: '📊', label: 'Übersicht' },
-              { id: 'trips', icon: '🌍', label: 'Reisen' },
               { id: 'expenses', icon: '💰', label: 'Ausgaben' },
               { id: 'itinerary', icon: '🗓️', label: 'Plan' },
               { id: 'packing', icon: '🎒', label: 'Packliste' },
