@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export default function TravelTrackerApp() {
@@ -202,7 +202,7 @@ const templateIcons = [
 
 // ========== LOAD FUNCTIONS ==========
 
-const loadPackingTemplates = async () => {
+const loadPackingTemplates = useCallback(async () => {
   if (!currentUser) return
   
   try {
@@ -218,9 +218,9 @@ const loadPackingTemplates = async () => {
   } catch (error) {
     console.error('Error loading templates:', error)
   }
-}
+}, [currentUser])
 
-const loadOtherTripsPackingLists = async () => {
+const loadOtherTripsPackingLists = useCallback(async () => {
   if (!currentUser || !currentTrip) return
   
   try {
@@ -262,9 +262,9 @@ const loadOtherTripsPackingLists = async () => {
     console.error('Error loading other trips packing lists:', error)
     setOtherTripsPackingLists([])
   }
-}
+}, [currentUser, currentTrip])
 
-const loadTripPackingList = async (tripId: string) => {
+const loadTripPackingList = useCallback(async (tripId: string) => {
   if (!tripId) return
   
   try {
@@ -301,7 +301,7 @@ const loadTripPackingList = async (tripId: string) => {
   } catch (error) {
     console.error('Error loading packing list:', error)
   }
-}
+}, [])
 
 const updatePackingStats = (items: any[]) => {
   const total = items.length
@@ -653,19 +653,19 @@ useEffect(() => {
   if (currentUser) {
     loadPackingTemplates()
   }
-}, [currentUser])
+}, [currentUser, loadPackingTemplates])
 
 useEffect(() => {
   if (currentTrip && activeTab === 'packing') {
     loadTripPackingList(currentTrip.id)
   }
-}, [currentTrip, activeTab])
+}, [currentTrip, activeTab, loadTripPackingList])
 
 useEffect(() => {
   if (showTemplateSelector && currentUser && currentTrip) {
     loadOtherTripsPackingLists()
   }
-}, [showTemplateSelector, currentUser, currentTrip])
+}, [showTemplateSelector, currentUser, currentTrip, loadOtherTripsPackingLists])
 
 // =================================================================
 // UI COMPONENTS
@@ -1565,7 +1565,7 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
   }
 
   // ========== TEAM MANAGEMENT FUNCTIONS ==========
-  const loadTripMembers = async (tripId: string) => {
+  const loadTripMembers = useCallback(async (tripId: string) => {
     try {
       const { data, error } = await supabase
         .from('trip_members')
@@ -1580,7 +1580,7 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
     } catch (error) {
       console.error('Error loading members:', error)
     }
-  }
+  }, [])
 
   const inviteUser = async () => {
     if (!inviteEmail || !currentTrip) return
@@ -1613,7 +1613,7 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
     }
   }
 
-  const loadPendingInvitations = async (tripId: string) => {
+  const loadPendingInvitations = useCallback(async (tripId: string) => {
     try {
       const { data, error } = await supabase
         .from('invitations')
@@ -1630,7 +1630,7 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
     } catch (error) {
       console.error('Error loading invitations:', error)
     }
-  }
+  }}, [])
 
   const cancelInvitation = async (invitationId: string) => {
     if (!confirm('Möchtest du diese Einladung wirklich zurückziehen?')) return
@@ -1719,7 +1719,7 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
 
 
   // ========== EXPENSES FUNCTIONS ==========
-  const loadExpenses = async (tripId: string) => {
+  const loadExpenses = useCallback(async (tripId: string) => {
     try {
       const { data, error } = await supabase
         .from('expenses')
@@ -1732,7 +1732,7 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
     } catch (error) {
       console.error('Error loading expenses:', error)
     }
-  }
+  }, [])
 
   const createOrUpdateExpense = async () => {
     if (!newExpense.trip_id) {
@@ -1960,7 +1960,7 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
   }
 
   // ========== ITINERARY FUNCTIONS ==========
-  const loadItineraryItems = async (tripId: string) => {
+  const loadItineraryItems = useCallback(async (tripId: string) => {
     try {
       const { data, error } = await supabase
         .from('itinerary_items')
@@ -1981,7 +1981,7 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
     } catch (error) {
       console.error('Error loading itinerary items:', error)
     }
-  }
+  }, [])
 
   const createOrUpdateItineraryItem = async () => {
     if (!newItineraryItem.title.trim()) {
@@ -2135,7 +2135,7 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
   }
 
   // ========== LOCATION/MAP FUNCTIONS ==========
-  const loadLocations = async (tripId: string) => {
+  const loadLocations = useCallback(async (tripId: string) => {
     try {
       const { data, error } = await supabase
         .from('locations')
@@ -2148,7 +2148,7 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
     } catch (error) {
       console.error('Error loading locations:', error)
     }
-  }
+  }, [])
 
   const geocodeAddress = async (address: string) => {
     if (!address.trim()) {
@@ -2635,12 +2635,12 @@ const getSettlementStats = () => {
     if (currentTrip) {
       loadTripMembers(currentTrip.id)
       loadExpenses(currentTrip.id)
-      loadTripPackingList(currentTrip.id)  // Use new system
+      loadTripPackingList(currentTrip.id)
       loadItineraryItems(currentTrip.id)
       loadLocations(currentTrip.id)
       loadPendingInvitations(currentTrip.id)
     }
-  }, [currentTrip])
+  }, [currentTrip, loadTripMembers, loadExpenses, loadTripPackingList, loadItineraryItems, loadLocations, loadPendingInvitations])
 
   // ========== RENDER FUNCTIONS ==========
   const renderOverview = () => {
