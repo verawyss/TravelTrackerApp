@@ -1101,13 +1101,6 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
   )
 }
 
-// ========== MODALS RENDERN ==========
-// In der Hauptkomponente diese Modals hinzufügen:
-
-{showTemplateSelector && <TemplateSelectorModal />}
-{showSaveAsTemplateModal && <SaveAsTemplateModal />}
-
-
   // ========== LOCATION AUTOCOMPLETE STATE (für Itinerary) ==========
   const [locationSuggestions, setLocationSuggestions] = useState<any[]>([])
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
