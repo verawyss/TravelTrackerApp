@@ -101,11 +101,18 @@ export default function PlacesAutocomplete({
     }
   }, [onPlaceSelect])
 
+  // Update input value when prop changes
+  useEffect(() => {
+    if (inputRef.current && value !== undefined) {
+      inputRef.current.value = value
+    }
+  }, [value])
+
   return (
     <input
       ref={inputRef}
       type="text"
-      value={value}
+      defaultValue={value || ''}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
