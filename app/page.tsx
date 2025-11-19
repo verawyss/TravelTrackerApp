@@ -5304,21 +5304,21 @@ const renderTabContent = () => {
 <div>
   <label className="block text-sm font-medium mb-2">Titel / Ort</label>
   <PlacesAutocomplete
-    value={newItineraryItem.title}
+    value={newItineraryItem.title || ''}  // ✅ Fallback auf ''
     onChange={(value) => setNewItineraryItem({...newItineraryItem, title: value})}
     onPlaceSelect={(place) => {
-    setNewItineraryItem({
-      ...newItineraryItem,
-      title: place.name,
-      address: place.address,
-      phone: place.phone || '',
-      website: place.website || '',
-      rating: place.rating || 0,
-      latitude: place.latitude || 0,
-      longitude: place.longitude || 0,
-      details: newItineraryItem.details || place.address
-    })
-  }}
+      setNewItineraryItem({
+        ...newItineraryItem,
+        title: place.name || '',  // ✅ Fallback
+        address: place.address || '',
+        phone: place.phone || '',
+        website: place.website || '',
+        rating: place.rating || 0,
+        latitude: place.latitude || 0,
+        longitude: place.longitude || 0,
+        details: newItineraryItem.details || place.address
+      })
+    }}
     placeholder="🔍 Hotel, Restaurant, Sehenswürdigkeit..."
   />
   <p className="text-xs text-gray-500 mt-1">
