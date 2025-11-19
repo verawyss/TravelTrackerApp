@@ -149,7 +149,7 @@ export default function PlacesAutocomplete({
         autocompleteRef.current = null
       }
     }
-  }, [onPlaceSelect, placeholder])
+  }, [])  // ✅ EMPTY ARRAY - nur einmal beim Mount ausführen
 
   return (
     <div 
