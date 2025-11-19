@@ -5381,7 +5381,11 @@ const renderTabContent = () => {
                   end_date: '',
                   title: '',
                   details: '',
-                  type: '🎯 Aktivität'
+                  type: '🎯 Aktivität',
+                  address: '',
+                  phone: '',
+                  website: '',
+                  rating: 0
                 })
                 // Clear autocomplete state
                 setLocationSuggestions([])
