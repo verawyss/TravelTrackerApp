@@ -3689,11 +3689,53 @@ const getSettlementStats = () => {
                               <span className="text-2xl">{typeIcon}</span>
                               <h3 className="font-semibold text-lg">{item.title}</h3>
                             </div>
-                            {item.details && (
+                                                       {item.details && (
                               <p className="text-gray-600 text-sm whitespace-pre-wrap">
                                 {item.details}
                               </p>
                             )}
+                            
+                            {/* ✅ NEU: Adresse, Telefon, Website anzeigen */}
+                            {(item.address || item.phone || item.website) && (
+                              <div className="mt-3 pt-3 border-t space-y-2">
+                                {item.address && (
+                                  <div className="flex items-start gap-2 text-sm text-gray-600">
+                                    <span>📍</span>
+                                    <span>{item.address}</span>
+                                  </div>
+                                )}
+                                
+                                {item.phone && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <a 
+                                      href={`tel:${item.phone}`} 
+                                      className="text-teal-600 hover:underline flex items-center gap-1"
+                                    >
+                                      📞 {item.phone}
+                                    </a>
+                                  </div>
+                                )}
+                                
+                                {item.website && (
+                                  <div className="flex items-center gap-2 text-sm">
+                                    <a 
+                                      href={item.website} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-teal-600 hover:underline flex items-center gap-1"
+                                    >
+                                      🌐 Website ↗
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            
+                            <div className="flex items-center gap-2 mt-2">
+                              <span className="text-xs px-2 py-1 bg-gray-100 rounded">
+                                {item.type}
+                              </span>
+                            </div>
                             <div className="flex items-center gap-2 mt-2">
                               <span className="text-xs px-2 py-1 bg-gray-100 rounded">
                                 {item.type}
@@ -3962,6 +4004,86 @@ const getSettlementStats = () => {
                 </div>
               )
             })}
+            {/* ✅ NEU: Itinerary Items mit Adresse */}
+        {itineraryItems.filter(item => item.address).length > 0 && (
+          <div className="bg-white rounded-lg shadow p-6 mt-6">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              🗓️ Orte aus dem Reiseplan
+              <span className="text-sm text-gray-500 font-normal">
+                ({itineraryItems.filter(item => item.address).length})
+              </span>
+            </h3>
+            
+            <div className="space-y-3">
+              {itineraryItems
+                .filter(item => item.address)
+                .sort((a, b) => a.day - b.day || a.time.localeCompare(b.time))
+                .map(item => (
+                  <div key={item.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-2xl">{item.type.split(' ')[0]}</span>
+                          <div>
+                            <h4 className="font-bold">{item.title}</h4>
+                            <p className="text-sm text-gray-600">
+                              Tag {item.day} • {item.time}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {/* Adresse */}
+                        <div className="space-y-1">
+                          <div className="flex items-start gap-2 text-sm">
+                            <span className="text-gray-600">📍</span>
+                            <span>{item.address}</span>
+                          </div>
+
+                          {/* Telefon */}
+                          {item.phone && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="text-gray-600">📞</span>
+                              <a 
+                                href={`tel:${item.phone}`} 
+                                className="text-teal-600 hover:underline"
+                              >
+                                {item.phone}
+                              </a>
+                            </div>
+                          )}
+
+                          {/* Website */}
+                          {item.website && (
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="text-gray-600">🌐</span>
+                              <a 
+                                href={item.website} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-teal-600 hover:underline"
+                              >
+                                Website ↗
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Google Maps Link */}
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.address)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm whitespace-nowrap"
+                      >
+                        🗺️ Karte
+                      </a>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
           </div>
         )}
 
