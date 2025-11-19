@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import PlacesAutocomplete from '@/components/PlacesAutocomplete'
+// import PlacesAutocomplete from '@/components/PlacesAutocomplete'  // ❌ Deaktiviert
 
 export default function TravelTrackerApp() {
   // ========== AUTH & USER STATE ==========
@@ -5302,28 +5302,51 @@ const renderTabContent = () => {
             </div>
 
 <div>
-  <label className="block text-sm font-medium mb-2">Titel / Ort</label>
-  <PlacesAutocomplete
-    value={newItineraryItem.title || ''}  // ✅ Fallback auf ''
-    onChange={(value) => setNewItineraryItem({...newItineraryItem, title: value})}
-    onPlaceSelect={(place) => {
-      setNewItineraryItem({
-        ...newItineraryItem,
-        title: place.name || '',  // ✅ Fallback
-        address: place.address || '',
-        phone: place.phone || '',
-        website: place.website || '',
-        rating: place.rating || 0,
-        latitude: place.latitude || 0,
-        longitude: place.longitude || 0,
-        details: newItineraryItem.details || place.address
-      })
-    }}
-    placeholder="🔍 Hotel, Restaurant, Sehenswürdigkeit..."
+  <label className="block text-sm font-medium mb-2">Titel / Ort *</label>
+  <input
+    type="text"
+    value={newItineraryItem.title || ''}
+    onChange={(e) => setNewItineraryItem({...newItineraryItem, title: e.target.value})}
+    placeholder="z.B. Hotel Schweizerhof"
+    className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
+    required
   />
-  <p className="text-xs text-gray-500 mt-1">
-    💡 Tippe den Namen und wähle aus den Vorschlägen
-  </p>
+</div>
+
+{/* Optional: Adresse manuell eingeben */}
+<div>
+  <label className="block text-sm font-medium mb-2">Adresse (optional)</label>
+  <input
+    type="text"
+    value={newItineraryItem.address || ''}
+    onChange={(e) => setNewItineraryItem({...newItineraryItem, address: e.target.value})}
+    placeholder="z.B. Bahnhofplatz 11, Bern"
+    className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
+  />
+</div>
+
+{/* Optional: Telefon */}
+<div>
+  <label className="block text-sm font-medium mb-2">Telefon (optional)</label>
+  <input
+    type="tel"
+    value={newItineraryItem.phone || ''}
+    onChange={(e) => setNewItineraryItem({...newItineraryItem, phone: e.target.value})}
+    placeholder="z.B. +41 31 123 45 67"
+    className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
+  />
+</div>
+
+{/* Optional: Website */}
+<div>
+  <label className="block text-sm font-medium mb-2">Website (optional)</label>
+  <input
+    type="url"
+    value={newItineraryItem.website || ''}
+    onChange={(e) => setNewItineraryItem({...newItineraryItem, website: e.target.value})}
+    placeholder="z.B. https://hotel-schweizerhof.ch"
+    className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
+  />
 </div>
 
 {/* Details-Vorschau */}
