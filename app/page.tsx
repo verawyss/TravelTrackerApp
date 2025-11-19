@@ -4,6 +4,13 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 // import PlacesAutocomplete from '@/components/PlacesAutocomplete'  // ❌ Deaktiviert
 
+// Google Maps Type Declaration
+declare global {
+  interface Window {
+    google: any
+  }
+}
+
 export default function TravelTrackerApp() {
   // ========== AUTH & USER STATE ==========
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -120,12 +127,7 @@ export default function TravelTrackerApp() {
     packed: false,
     essential: false
   })
-// Nach den Imports, vor der Component
-declare global {
-  interface Window {
-    google: any
-  }
-}
+
 // Aktualisierte Packing Categories mit mehr Optionen
 const packingCategories = [
   { id: '👕 Kleidung', icon: '👕', label: 'Kleidung' },
