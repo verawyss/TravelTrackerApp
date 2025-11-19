@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'TravelTracker Pro',
-  description: 'Deine Reiseplanungs-App',
+  description: 'Reiseplanung leicht gemacht',
 }
 
 export default function RootLayout({
@@ -14,9 +14,9 @@ export default function RootLayout({
   return (
     <html lang="de">
       <head>
-        {/* Google Maps Script */}
+        {/* Google Maps Script mit korrektem async loading */}
         <script
-          src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places&language=de`}
+          src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places&language=de&loading=async`}
           async
           defer
         />
