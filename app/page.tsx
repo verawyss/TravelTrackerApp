@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
+import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 
 export default function TravelTrackerApp() {
   // ========== AUTH & USER STATE ==========
@@ -143,16 +144,21 @@ const packingCategories = [
   const [showItineraryModal, setShowItineraryModal] = useState(false)
   const [editingItineraryItem, setEditingItineraryItem] = useState<any>(null)
   const [selectedDay, setSelectedDay] = useState<number>(1)
-  const [newItineraryItem, setNewItineraryItem] = useState({
-    day: 1,
-    time: '09:00',
-    time_end: '', // NEW: End time (optional)
-    start_date: '', // NEW: Start date (optional for multi-day activities)
-    end_date: '', // NEW: End date (optional for multi-day activities)
-    title: '',
-    details: '',
-    type: '🎯 Aktivität'
-  })
+const [newItineraryItem, setNewItineraryItem] = useState({
+  day: 1,
+  time: '09:00',
+  time_end: '',
+  start_date: '',
+  end_date: '',
+  title: '',
+  details: '',
+  type: '🎯 Aktivität',
+  // ✅ NEU: Places Details
+  address: '',
+  phone: '',
+  website: '',
+  rating: 0
+})
 
   // =================================================================
 // ERWEITERTE PACKLISTEN-VERWALTUNG MIT TEMPLATES
@@ -5270,58 +5276,69 @@ const renderTabContent = () => {
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">Titel * {isSearchingLocations && '🔍'}</label>
-              <div className="relative">
-                <input 
-                  type="text"
-                  placeholder="z.B. Hotel Schweizerhof oder Frühstück im Hotel"
-                  value={newItineraryItem.title}
-                  onChange={(e) => handleTitleChange(e.target.value)}
-                  onFocus={() => {
-                    // Show suggestions if we have any
-                    if (locationSuggestions.length > 0) {
-                      setShowLocationSuggestions(true)
-                    }
-                  }}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-                  autoFocus
-                />
-                
-                {/* Autocomplete Dropdown */}
-                {showLocationSuggestions && locationSuggestions.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                    <div className="p-2 bg-gray-50 border-b text-xs text-gray-600 flex items-center gap-2">
-                      <span>📍</span>
-                      <span>Locations gefunden - klicke zum Auswählen & automatisch auf Karte speichern</span>
-                    </div>
-                    {locationSuggestions.map((suggestion, index) => (
-                      <button
-                        key={index}
-                        type="button"
-                        onClick={() => handleLocationSelect(suggestion)}
-                        className="w-full text-left px-4 py-3 hover:bg-teal-50 border-b last:border-b-0 transition-colors"
-                      >
-                        <div className="flex items-start gap-3">
-                          <span className="text-2xl flex-shrink-0">{suggestion.icon}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-gray-900 truncate">
-                              {suggestion.name}
-                            </div>
-                            <div className="text-sm text-gray-600 truncate">
-                              {suggestion.full_address}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                💡 Tipp: Gib einen Ort ein (z.B. "Schweizerhof Genf") und wir finden automatisch die Location
-              </p>
-            </div>
+<div>
+  <label className="block text-sm font-medium mb-2">Titel / Ort</label>
+  <PlacesAutocomplete
+    value={newItineraryItem.title}
+    onChange={(value) => setNewItineraryItem({...newItineraryItem, title: value})}
+    onPlaceSelect={(place) => {
+      setNewItineraryItem({
+        ...newItineraryItem,
+        title: place.name,
+        address: place.address,
+        phone: place.phone || '',
+        website: place.website || '',
+        rating: place.rating || 0,
+        details: newItineraryItem.details || place.address
+      })
+    }}
+    placeholder="🔍 Hotel, Restaurant, Sehenswürdigkeit..."
+  />
+  <p className="text-xs text-gray-500 mt-1">
+    💡 Tippe den Namen und wähle aus den Vorschlägen
+  </p>
+</div>
+
+{/* Details-Vorschau */}
+{newItineraryItem.address && (
+  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+    <h4 className="font-semibold text-sm text-blue-900 mb-2">
+      ✨ Automatisch gefunden:
+    </h4>
+    
+    <div className="space-y-2 text-sm">
+      <div className="flex items-start gap-2">
+        <span className="text-gray-600">📍</span>
+        <span>{newItineraryItem.address}</span>
+      </div>
+      
+      {newItineraryItem.phone && (
+        <div className="flex items-center gap-2">
+          <span className="text-gray-600">📞</span>
+          <a href={`tel:${newItineraryItem.phone}`} className="text-teal-600 hover:underline">
+            {newItineraryItem.phone}
+          </a>
+        </div>
+      )}
+      
+      {newItineraryItem.website && (
+        <div className="flex items-center gap-2">
+          <span className="text-gray-600">🌐</span>
+          <a href={newItineraryItem.website} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline">
+            Website ↗
+          </a>
+        </div>
+      )}
+      
+      {newItineraryItem.rating > 0 && (
+        <div className="flex items-center gap-2">
+          <span className="text-yellow-500">{'⭐'.repeat(Math.round(newItineraryItem.rating))}</span>
+          <span>{newItineraryItem.rating}</span>
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
             <div>
               <label className="block text-sm font-medium mb-2">Details/Notizen</label>
