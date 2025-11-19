@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 // import PlacesAutocomplete from '@/components/PlacesAutocomplete'  // ❌ Deaktiviert
 
@@ -120,7 +120,12 @@ export default function TravelTrackerApp() {
     packed: false,
     essential: false
   })
-
+// Nach den Imports, vor der Component
+declare global {
+  interface Window {
+    google: any
+  }
+}
 // Aktualisierte Packing Categories mit mehr Optionen
 const packingCategories = [
   { id: '👕 Kleidung', icon: '👕', label: 'Kleidung' },
@@ -5426,13 +5431,22 @@ const renderTabContent = () => {
 <div>
   <label className="block text-sm font-medium mb-2">Titel / Ort *</label>
   <input
+    ref={titleInputRef}
     type="text"
-    value={newItineraryItem.title || ''}
-    onChange={(e) => setNewItineraryItem({...newItineraryItem, title: e.target.value})}
-    placeholder="z.B. Hotel Schweizerhof"
+    defaultValue={newItineraryItem.title || ''}
+    onBlur={(e) => {
+      // Synchronize manual input
+      if (!newItineraryItem.title || newItineraryItem.title === '') {
+        setNewItineraryItem({...newItineraryItem, title: e.target.value})
+      }
+    }}
+    placeholder="🔍 Tippe um zu suchen... (z.B. Hotel Schweizerhof)"
     className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
     required
   />
+  <p className="text-xs text-gray-500 mt-1">
+    💡 Tippe den Namen und wähle aus den Dropdown-Vorschlägen
+  </p>
 </div>
 
 {/* Optional: Adresse manuell eingeben */}
@@ -6002,6 +6016,54 @@ const renderTabContent = () => {
         </div>
       )}
 
+// ========== GOOGLE PLACES AUTOCOMPLETE ==========
+const titleInputRef = useRef<HTMLInputElement>(null)
+
+useEffect(() => {
+  // Warte bis Google Maps geladen ist
+  const initAutocomplete = () => {
+    if (!window.google?.maps?.places || !titleInputRef.current) {
+      setTimeout(initAutocomplete, 100)
+      return
+    }
+
+    console.log('✅ Initializing Google Places Autocomplete')
+
+    const autocomplete = new window.google.maps.places.Autocomplete(
+      titleInputRef.current,
+      {
+        types: ['establishment', 'tourist_attraction', 'lodging', 'restaurant'],
+        fields: ['name', 'formatted_address', 'formatted_phone_number', 'website', 'rating', 'geometry']
+      }
+    )
+
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace()
+      
+      if (!place || !place.name) {
+        console.log('❌ No place selected')
+        return
+      }
+
+      console.log('📍 Place selected:', place)
+
+      // Automatisch alle Felder füllen
+      setNewItineraryItem({
+        ...newItineraryItem,
+        title: place.name || '',
+        address: place.formatted_address || '',
+        phone: place.formatted_phone_number || '',
+        website: place.website || '',
+        rating: place.rating || 0,
+        latitude: place.geometry?.location?.lat() || 0,
+        longitude: place.geometry?.location?.lng() || 0
+      })
+    })
+  }
+
+  initAutocomplete()
+}, []) // Nur einmal beim Mount
+      
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-8">
         {renderTabContent()}
