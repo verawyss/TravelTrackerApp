@@ -166,6 +166,52 @@ const packingCategories = [
     longitude: 0
   })
 
+  // ========== GOOGLE PLACES AUTOCOMPLETE ==========
+  const titleInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const initAutocomplete = () => {
+      if (!window.google?.maps?.places || !titleInputRef.current) {
+        setTimeout(initAutocomplete, 100)
+        return
+      }
+
+      console.log('✅ Google Places Autocomplete initialisiert')
+
+      const autocomplete = new window.google.maps.places.Autocomplete(
+        titleInputRef.current,
+        {
+          types: ['establishment', 'tourist_attraction', 'lodging', 'restaurant'],
+          fields: ['name', 'formatted_address', 'formatted_phone_number', 'website', 'rating', 'geometry']
+        }
+      )
+
+      autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace()
+        
+        if (!place || !place.name) {
+          console.log('❌ Kein Ort ausgewählt')
+          return
+        }
+
+        console.log('📍 Ort ausgewählt:', place)
+
+        setNewItineraryItem(prev => ({
+          ...prev,
+          title: place.name || '',
+          address: place.formatted_address || '',
+          phone: place.formatted_phone_number || '',
+          website: place.website || '',
+          rating: place.rating || 0,
+          latitude: place.geometry?.location?.lat() || 0,
+          longitude: place.geometry?.location?.lng() || 0
+        }))
+      })
+    }
+
+    initAutocomplete()
+  }, [])
+
   // =================================================================
 // ERWEITERTE PACKLISTEN-VERWALTUNG MIT TEMPLATES
 // Diesen Code in die page.tsx integrieren
@@ -6016,70 +6062,5 @@ const renderTabContent = () => {
         </div>
       )}
 
-// ========== GOOGLE PLACES AUTOCOMPLETE ==========
-const titleInputRef = useRef<HTMLInputElement>(null)
-
-useEffect(() => {
-  // Warte bis Google Maps geladen ist
-  const initAutocomplete = () => {
-    if (!window.google?.maps?.places || !titleInputRef.current) {
-      setTimeout(initAutocomplete, 100)
-      return
-    }
-
-    console.log('✅ Initializing Google Places Autocomplete')
-
-    const autocomplete = new window.google.maps.places.Autocomplete(
-      titleInputRef.current,
-      {
-        types: ['establishment', 'tourist_attraction', 'lodging', 'restaurant'],
-        fields: ['name', 'formatted_address', 'formatted_phone_number', 'website', 'rating', 'geometry']
-      }
-    )
-
-    autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace()
-      
-      if (!place || !place.name) {
-        console.log('❌ No place selected')
-        return
-      }
-
-      console.log('📍 Place selected:', place)
-
-      // Automatisch alle Felder füllen
-      setNewItineraryItem({
-        ...newItineraryItem,
-        title: place.name || '',
-        address: place.formatted_address || '',
-        phone: place.formatted_phone_number || '',
-        website: place.website || '',
-        rating: place.rating || 0,
-        latitude: place.geometry?.location?.lat() || 0,
-        longitude: place.geometry?.location?.lng() || 0
-      })
-    })
-  }
-
-  initAutocomplete()
-}, []) // Nur einmal beim Mount
-      
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {renderTabContent()}
-      </main>
-
-      {/* Modals */}
-      {renderNewTripModal()}
-      {renderEditTripModal()}
-      {renderAddUserModal()}
-      {renderInviteModal()}
-      {renderExpenseModal()}
-      {renderItineraryModal()}
-      {renderPackingModal()}
-      {renderLocationModal()}
-      {renderTemplateSelectorModal()}
-      {renderSaveAsTemplateModal()}
-    </div>
   )
 }
