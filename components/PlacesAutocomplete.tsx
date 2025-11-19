@@ -5,8 +5,9 @@ import { useEffect, useRef } from 'react'
 // Declare google types
 declare global {
   interface Window {
-    google: any
+    google: typeof google
   }
+  const google: any
 }
 
 interface PlaceDetails {
