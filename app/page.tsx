@@ -6062,5 +6062,5 @@ const renderTabContent = () => {
         </div>
       )}
 
-  )
+  </div>)
 }
