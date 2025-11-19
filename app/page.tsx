@@ -2042,7 +2042,11 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
         end_date: '', // Reset
         title: '',
         details: '',
-        type: '🎯 Aktivität'
+        type: '🎯 Aktivität',
+        address: '',
+        phone: '',
+        website: '',
+        rating: 0
       })
       // Clear autocomplete state
       setLocationSuggestions([])
@@ -3512,7 +3516,11 @@ const getSettlementStats = () => {
                 end_date: '',
                 title: '',
                 details: '',
-                type: '🎯 Aktivität'
+                type: '🎯 Aktivität',
+                address: '',
+                phone: '',
+                website: '',
+                rating: 0
               })
               setShowItineraryModal(true)
             }}
@@ -3570,7 +3578,11 @@ const getSettlementStats = () => {
                   end_date: '',
                   title: '',
                   details: '',
-                  type: '🎯 Aktivität'
+                  type: '🎯 Aktivität',
+                  address: '',
+                  phone: '',
+                  website: '',
+                  rating: 0
                 })
                 setShowItineraryModal(true)
               }}
@@ -3695,7 +3707,11 @@ const getSettlementStats = () => {
                                   end_date: item.end_date || '',
                                   title: item.title,
                                   details: item.details,
-                                  type: item.type
+                                  type: item.type,
+                                  address: item.address || '',
+                                  phone: item.phone || '',
+                                  website: item.website || '',
+                                  rating: item.rating || 0
                                 })
                                 setShowItineraryModal(true)
                               }}
