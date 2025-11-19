@@ -2,6 +2,13 @@
 
 import { useEffect, useRef } from 'react'
 
+// Declare google types
+declare global {
+  interface Window {
+    google: any
+  }
+}
+
 interface PlaceDetails {
   name: string
   address: string
