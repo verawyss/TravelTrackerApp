@@ -1,12 +1,11 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-
-const inter = Inter({ subsets: ['latin'] })
+import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'TravelTracker Pro',
-  description: 'Deine ultimative Reiseplanungs-App',
+  description: 'Deine Reiseplanungs-App',
 }
 
 export default function RootLayout({
@@ -14,21 +13,17 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-
   return (
     <html lang="de">
       <head>
-        {/* Google Places Autocomplete Script */}
-        {googleMapsApiKey && (
-          <script
-            src={`https://maps.googleapis.com/maps/api/js?key=${googleMapsApiKey}&libraries=places&language=de`}
-            async
-            defer
-          />
-        )}
+        {/* Google Maps Script */}
+        <script
+          src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places&language=de`}
+          async
+          defer
+        />
       </head>
-      <body className={inter.className}>{children}</body>
+      <body>{children}</body>
     </html>
   )
 }
