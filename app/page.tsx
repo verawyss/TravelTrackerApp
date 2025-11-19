@@ -144,21 +144,22 @@ const packingCategories = [
   const [showItineraryModal, setShowItineraryModal] = useState(false)
   const [editingItineraryItem, setEditingItineraryItem] = useState<any>(null)
   const [selectedDay, setSelectedDay] = useState<number>(1)
-const [newItineraryItem, setNewItineraryItem] = useState({
-  day: 1,
-  time: '09:00',
-  time_end: '',
-  start_date: '',
-  end_date: '',
-  title: '',
-  details: '',
-  type: '🎯 Aktivität',
-  // ✅ NEU: Places Details
-  address: '',
-  phone: '',
-  website: '',
-  rating: 0
-})
+  const [newItineraryItem, setNewItineraryItem] = useState({
+    day: 1,
+    time: '09:00',
+    time_end: '',
+    start_date: '',
+    end_date: '',
+    title: '',
+    details: '',
+    type: '🎯 Aktivität',
+    address: '',
+    phone: '',
+    website: '',
+    rating: 0,
+    latitude: 0,
+    longitude: 0
+  })
 
   // =================================================================
 // ERWEITERTE PACKLISTEN-VERWALTUNG MIT TEMPLATES
@@ -2046,7 +2047,9 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
         address: '',
         phone: '',
         website: '',
-        rating: 0
+        rating: 0,
+        latitude: 0,
+        longitude: 0
       })
       // Clear autocomplete state
       setLocationSuggestions([])
@@ -3520,7 +3523,9 @@ const getSettlementStats = () => {
                 address: '',
                 phone: '',
                 website: '',
-                rating: 0
+                rating: 0,
+                latitude: 0,
+                longitude: 0
               })
               setShowItineraryModal(true)
             }}
@@ -3582,7 +3587,9 @@ const getSettlementStats = () => {
                   address: '',
                   phone: '',
                   website: '',
-                  rating: 0
+                  rating: 0,
+                  latitude: 0,
+                  longitude: 0
                 })
                 setShowItineraryModal(true)
               }}
@@ -3711,7 +3718,9 @@ const getSettlementStats = () => {
                                   address: item.address || '',
                                   phone: item.phone || '',
                                   website: item.website || '',
-                                  rating: item.rating || 0
+                                  rating: item.rating || 0,
+                                  latitude: item.latitude || 0,
+                                  longitude: item.longitude || 0
                                 })
                                 setShowItineraryModal(true)
                               }}
@@ -5298,16 +5307,18 @@ const renderTabContent = () => {
     value={newItineraryItem.title}
     onChange={(value) => setNewItineraryItem({...newItineraryItem, title: value})}
     onPlaceSelect={(place) => {
-      setNewItineraryItem({
-        ...newItineraryItem,
-        title: place.name,
-        address: place.address,
-        phone: place.phone || '',
-        website: place.website || '',
-        rating: place.rating || 0,
-        details: newItineraryItem.details || place.address
-      })
-    }}
+    setNewItineraryItem({
+      ...newItineraryItem,
+      title: place.name,
+      address: place.address,
+      phone: place.phone || '',
+      website: place.website || '',
+      rating: place.rating || 0,
+      latitude: place.latitude || 0,
+      longitude: place.longitude || 0,
+      details: newItineraryItem.details || place.address
+    })
+  }}
     placeholder="🔍 Hotel, Restaurant, Sehenswürdigkeit..."
   />
   <p className="text-xs text-gray-500 mt-1">
@@ -5385,7 +5396,9 @@ const renderTabContent = () => {
                   address: '',
                   phone: '',
                   website: '',
-                  rating: 0
+                  rating: 0,
+                  latitude: 0,
+                  longitude: 0
                 })
                 // Clear autocomplete state
                 setLocationSuggestions([])
