@@ -16,6 +16,8 @@ interface PlaceDetails {
   phone?: string
   website?: string
   rating?: number
+  latitude?: number
+  longitude?: number
 }
 
 interface PlacesAutocompleteProps {
@@ -42,7 +44,7 @@ export default function PlacesAutocomplete({
 
       const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
         types: ['establishment', 'tourist_attraction', 'lodging', 'restaurant'],
-        fields: ['name', 'formatted_address', 'formatted_phone_number', 'website', 'rating']
+        fields: ['name', 'formatted_address', 'formatted_phone_number', 'website', 'rating', 'geometry']
       })
 
       autocomplete.addListener('place_changed', () => {
@@ -55,7 +57,9 @@ export default function PlacesAutocomplete({
           address: place.formatted_address || '',
           phone: place.formatted_phone_number,
           website: place.website,
-          rating: place.rating
+          rating: place.rating,
+          latitude: place.geometry?.location?.lat(),
+          longitude: place.geometry?.location?.lng()
         }
 
         console.log('📍 Selected:', details)
