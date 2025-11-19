@@ -6062,5 +6062,22 @@ const renderTabContent = () => {
         </div>
       )}
 
-  </div>)
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        {renderTabContent()}
+      </main>
+
+      {/* Modals */}
+      {renderNewTripModal()}
+      {renderEditTripModal()}
+      {renderAddUserModal()}
+      {renderInviteModal()}
+      {renderExpenseModal()}
+      {renderItineraryModal()}
+      {renderPackingModal()}
+      {renderLocationModal()}
+      {renderTemplateSelectorModal()}
+      {renderSaveAsTemplateModal()}
+    </div>
+  )
 }
