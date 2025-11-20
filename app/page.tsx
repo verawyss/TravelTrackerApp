@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import NominatimAutocomplete from '@/components/NominatimAutocomplete'
+import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 
 export default function TravelTrackerApp() {
   // ========== AUTH & USER STATE ==========
@@ -5254,7 +5254,7 @@ const renderTabContent = () => {
 
 <div>
   <label className="block text-sm font-medium mb-2">Titel / Ort *</label>
-  <NominatimAutocomplete
+  <PlacesAutocomplete
     value={newItineraryItem.title || ''}
     onChange={(value) => setNewItineraryItem({...newItineraryItem, title: value})}
     onPlaceSelect={(place) => {
