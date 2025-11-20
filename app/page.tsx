@@ -5425,7 +5425,7 @@ const renderTabContent = () => {
 
 <div>
   <label className="block text-sm font-medium mb-2">Titel / Ort *</label>
-  <NominatimAutocomplete
+  <PlacesAutocomplete
     value={newItineraryItem.title || ''}
     onChange={(value) => setNewItineraryItem({...newItineraryItem, title: value})}
     onPlaceSelect={(place) => {
