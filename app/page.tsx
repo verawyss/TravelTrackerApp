@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import PlacesAutocomplete from '@/components/PlacesAutocomplete'
+import NominatimAutocomplete from '@/components/NominatimAutocomplete'
 
 export default function TravelTrackerApp() {
   // ========== AUTH & USER STATE ==========
@@ -1154,13 +1154,28 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
 
   const itineraryTypes = [
     { id: '🍳 Frühstück', icon: '🍳', label: 'Frühstück' },
+    { id: '☕ Kaffee/Snack', icon: '☕', label: 'Kaffee/Snack' },
+    { id: '🍕 Mittagessen', icon: '🍕', label: 'Mittagessen' },
+    { id: '🍽️ Abendessen', icon: '🍽️', label: 'Abendessen' },
+    { id: '🍷 Bar/Drinks', icon: '🍷', label: 'Bar/Drinks' },
     { id: '🚗 Transport', icon: '🚗', label: 'Transport' },
+    { id: '✈️ Flug', icon: '✈️', label: 'Flug' },
+    { id: '🚂 Zug/Bus', icon: '🚂', label: 'Zug/Bus' },
+    { id: '🚕 Taxi/Uber', icon: '🚕', label: 'Taxi/Uber' },
+    { id: '🏨 Hotel Check-in', icon: '🏨', label: 'Hotel Check-in' },
+    { id: '🏨 Hotel Check-out', icon: '🏨', label: 'Hotel Check-out' },
     { id: '🎯 Aktivität', icon: '🎯', label: 'Aktivität' },
-    { id: '🍕 Restaurant', icon: '🍕', label: 'Restaurant' },
-    { id: '🏨 Check-in/out', icon: '🏨', label: 'Check-in/out' },
-    { id: '🛍️ Shopping', icon: '🛍️', label: 'Shopping' },
+    { id: '🎨 Museum/Kultur', icon: '🎨', label: 'Museum/Kultur' },
+    { id: '🎭 Show/Event', icon: '🎭', label: 'Show/Event' },
+    { id: '🎢 Vergnügungspark', icon: '🎢', label: 'Vergnügungspark' },
+    { id: '⚽ Sport', icon: '⚽', label: 'Sport' },
+    { id: '🏖️ Strand/Pool', icon: '🏖️', label: 'Strand/Pool' },
+    { id: '🌳 Natur/Wandern', icon: '🌳', label: 'Natur/Wandern' },
     { id: '📸 Sehenswürdigkeit', icon: '📸', label: 'Sehenswürdigkeit' },
-    { id: '💤 Pause', icon: '💤', label: 'Pause' },
+    { id: '🛍️ Shopping', icon: '🛍️', label: 'Shopping' },
+    { id: '💆 Wellness/Spa', icon: '💆', label: 'Wellness/Spa' },
+    { id: '💤 Pause/Freizeit', icon: '💤', label: 'Pause/Freizeit' },
+    { id: '📞 Termin/Meeting', icon: '📞', label: 'Termin/Meeting' },
     { id: '📝 Sonstiges', icon: '📝', label: 'Sonstiges' }
   ]
 
@@ -3814,31 +3829,163 @@ const getSettlementStats = () => {
       )
     }
 
-    const groupedLocations = getLocationsByType()
-    const center = getCenterCoordinates()
+    // Filter itinerary items with address
+    const itemsWithAddress = itineraryItems.filter(item => item.address && item.address.trim() !== '')
+
+    if (itemsWithAddress.length === 0) {
+      return (
+        <div className="text-center py-12 bg-white rounded-lg shadow">
+          <span className="text-6xl mb-4 block">🗺️</span>
+          <p className="text-gray-600 mb-2">Noch keine Orte mit Adresse vorhanden</p>
+          <p className="text-sm text-gray-500">
+            Füge Hotels, Restaurants etc. im <strong>Plan-Tab</strong> hinzu
+          </p>
+        </div>
+      )
+    }
 
     return (
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Karte & Locations</h2>
-          <button
-            onClick={() => {
-              setEditingLocation(null)
-              setNewLocation({
-                name: '',
-                address: '',
-                latitude: center.lat,
-                longitude: center.lng,
-                type: '🏨 Hotel',
-                notes: ''
-              })
-              setShowLocationModal(true)
-            }}
-            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
-          >
-            + Location hinzufügen
-          </button>
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-2xl font-bold mb-4">🗺️ Alle Orte aus dem Reiseplan</h2>
+          <p className="text-sm text-gray-600 mb-6">
+            {itemsWithAddress.length} Ort(e) • Sortiert nach Tag und Zeit
+          </p>
+
+          {/* List of places */}
+          <div className="space-y-3">
+            {itemsWithAddress
+              .sort((a, b) => a.day - b.day || a.time.localeCompare(b.time))
+              .map(item => (
+                <div key={item.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      {/* Header */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-2xl">{item.type.split(' ')[0]}</span>
+                        <div>
+                          <h3 className="font-bold text-lg">{item.title}</h3>
+                          <p className="text-sm text-gray-600">
+                            Tag {item.day} • {item.time}
+                            {item.time_end && ` - ${item.time_end}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Details */}
+                      <div className="space-y-1 mt-3">
+                        {/* Address */}
+                        <div className="flex items-start gap-2 text-sm">
+                          <span className="text-gray-600">📍</span>
+                          <span className="flex-1">{item.address}</span>
+                        </div>
+
+                        {/* Phone */}
+                        {item.phone && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-gray-600">📞</span>
+                            <a 
+                              href={`tel:${item.phone}`} 
+                              className="text-teal-600 hover:underline"
+                            >
+                              {item.phone}
+                            </a>
+                          </div>
+                        )}
+
+                        {/* Website */}
+                        {item.website && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="text-gray-600">🌐</span>
+                            <a 
+                              href={item.website} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-teal-600 hover:underline"
+                            >
+                              Website ↗
+                            </a>
+                          </div>
+                        )}
+
+                        {/* Details/Notes */}
+                        {item.details && (
+                          <div className="flex items-start gap-2 text-sm mt-2 pt-2 border-t">
+                            <span className="text-gray-600">📝</span>
+                            <span className="flex-1 text-gray-600">{item.details}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Map button */}
+                    <div className="flex flex-col gap-2">
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.address)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm font-medium whitespace-nowrap text-center"
+                      >
+                        🗺️ Karte
+                      </a>
+                      
+                      {/* Edit button */}
+                      <button
+                        onClick={() => {
+                          setEditingItineraryItem(item)
+                          setNewItineraryItem({
+                            day: item.day,
+                            time: item.time,
+                            time_end: item.time_end || '',
+                            start_date: item.start_date || '',
+                            end_date: item.end_date || '',
+                            title: item.title,
+                            details: item.details,
+                            type: item.type,
+                            address: item.address || '',
+                            phone: item.phone || '',
+                            website: item.website || '',
+                            rating: item.rating || 0,
+                            latitude: item.latitude || 0,
+                            longitude: item.longitude || 0
+                          })
+                          setActiveTab('itinerary')
+                          setSelectedDay(item.day)
+                          setShowItineraryModal(true)
+                        }}
+                        className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
+                      >
+                        ✏️ Bearbeiten
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+          </div>
+
+          {/* View all on map */}
+          {itemsWithAddress.length > 1 && (
+            <div className="mt-6 pt-6 border-t">
+              <a
+                href={`https://www.google.com/maps/dir/${itemsWithAddress
+                  .sort((a, b) => a.day - b.day || a.time.localeCompare(b.time))
+                  .map(item => encodeURIComponent(item.address))
+                  .join('/')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full text-center px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700 font-medium"
+              >
+                🗺️ Alle Orte als Route in Google Maps öffnen
+              </a>
+              <p className="text-xs text-gray-500 text-center mt-2">
+                Öffnet alle {itemsWithAddress.length} Orte in der richtigen Reihenfolge
+              </p>
+            </div>
+          )}
         </div>
+      </div>
+    )
+  }
 
         {/* Map Display (Simplified - using OpenStreetMap iframe) */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -5425,7 +5572,7 @@ const renderTabContent = () => {
 
 <div>
   <label className="block text-sm font-medium mb-2">Titel / Ort *</label>
-  <PlacesAutocomplete
+  <NominatimAutocomplete
     value={newItineraryItem.title || ''}
     onChange={(value) => setNewItineraryItem({...newItineraryItem, title: value})}
     onPlaceSelect={(place) => {
