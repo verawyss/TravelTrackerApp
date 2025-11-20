@@ -5410,13 +5410,15 @@ const renderTabContent = () => {
                   end_date: '',
                   title: '',
                   details: '',
-                  type: '🎯 Aktivität',
+                  type: '',
                   address: '',
                   phone: '',
                   website: '',
                   rating: 0,
                   latitude: 0,
-                  longitude: 0
+                  longitude: 0,
+                  cost: 0,
+                  expense_id: null
                 })
                 // Clear autocomplete state
                 setLocationSuggestions([])
