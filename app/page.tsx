@@ -158,7 +158,9 @@ const packingCategories = [
     website: '',
     rating: 0,
     latitude: 0,
-    longitude: 0
+    longitude: 0,
+    cost: 0,           // ← NEU: Kosten
+    expense_id: null   // ← NEU: Verknüpfte Ausgabe
   })
 
   // =================================================================
@@ -1162,8 +1164,7 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
     { id: '✈️ Flug', icon: '✈️', label: 'Flug' },
     { id: '🚂 Zug/Bus', icon: '🚂', label: 'Zug/Bus' },
     { id: '🚕 Taxi/Uber', icon: '🚕', label: 'Taxi/Uber' },
-    { id: '🏨 Hotel Check-in', icon: '🏨', label: 'Hotel Check-in' },
-    { id: '🏨 Hotel Check-out', icon: '🏨', label: 'Hotel Check-out' },
+    { id: '🏨 Hotel', icon: '🏨', label: 'Hotel' },
     { id: '🎯 Aktivität', icon: '🎯', label: 'Aktivität' },
     { id: '🎨 Museum/Kultur', icon: '🎨', label: 'Museum/Kultur' },
     { id: '🎭 Show/Event', icon: '🎭', label: 'Show/Event' },
@@ -3750,11 +3751,6 @@ const getSettlementStats = () => {
                                 {item.type}
                               </span>
                             </div>
-                            <div className="flex items-center gap-2 mt-2">
-                              <span className="text-xs px-2 py-1 bg-gray-100 rounded">
-                                {item.type}
-                              </span>
-                            </div>
                           </div>
 
                           {/* Action buttons */}
@@ -3828,20 +3824,25 @@ const renderMapTab = () => {
       )
     }
 
-    // Filter itinerary items with address
-    const itemsWithAddress = itineraryItems.filter(item => item.address && item.address.trim() !== '')
+// Filter items: Itinerary mit Adresse ODER Expenses mit verknüpftem Item
+const itemsWithAddress = itineraryItems.filter(item => 
+  item.address && item.address.trim() !== ''
+)
 
-    if (itemsWithAddress.length === 0) {
-      return (
-        <div className="text-center py-12 bg-white rounded-lg shadow">
-          <span className="text-6xl mb-4 block">🗺️</span>
-          <p className="text-gray-600 mb-2">Noch keine Orte mit Adresse vorhanden</p>
-          <p className="text-sm text-gray-500">
-            Füge Hotels, Restaurants etc. im <strong>Plan-Tab</strong> hinzu
-          </p>
-        </div>
-      )
-    }
+// Zeige auch, welche Kosten haben
+{itemsWithAddress.map(item => (
+  <div key={item.id} className="...">
+    {/* ... existing content ... */}
+    
+    {/* Zeige Kosten falls vorhanden */}
+    {item.cost > 0 && (
+      <div className="flex items-center gap-2 text-sm font-medium text-green-600 mt-2">
+        <span>💰</span>
+        <span>{item.cost.toFixed(2)} CHF</span>
+      </div>
+    )}
+  </div>
+))}
 
     return (
       <div className="space-y-4">
@@ -5308,7 +5309,31 @@ const renderTabContent = () => {
     className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
   />
 </div>
-
+{/* Optional: Kosten */}
+<div>
+  <label className="block text-sm font-medium mb-2">Kosten (optional)</label>
+  <div className="flex gap-2">
+    <input
+      type="number"
+      step="0.01"
+      value={newItineraryItem.cost || ''}
+      onChange={(e) => setNewItineraryItem({...newItineraryItem, cost: parseFloat(e.target.value) || 0})}
+      placeholder="0.00"
+      className="flex-1 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
+    />
+    <select
+      className="px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
+      defaultValue="CHF"
+    >
+      <option>CHF</option>
+      <option>EUR</option>
+      <option>USD</option>
+    </select>
+  </div>
+  <p className="text-xs text-gray-500 mt-1">
+    💡 Wird automatisch in Ausgaben-Tab übernommen
+  </p>
+</div>
 {/* Details-Vorschau */}
 {newItineraryItem.address && (
   <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
