@@ -2,14 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-// import PlacesAutocomplete from '@/components/PlacesAutocomplete'  // ❌ Deaktiviert
-
-// Google Maps Type Declaration
-declare global {
-  interface Window {
-    google: any
-  }
-}
 
 export default function TravelTrackerApp() {
   // ========== AUTH & USER STATE ==========
@@ -167,52 +159,6 @@ const packingCategories = [
     latitude: 0,
     longitude: 0
   })
-
-  // ========== GOOGLE PLACES AUTOCOMPLETE ==========
-  const titleInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    const initAutocomplete = () => {
-      if (!window.google?.maps?.places || !titleInputRef.current) {
-        setTimeout(initAutocomplete, 100)
-        return
-      }
-
-      console.log('✅ Google Places Autocomplete initialisiert')
-
-      const autocomplete = new window.google.maps.places.Autocomplete(
-        titleInputRef.current,
-        {
-          types: ['establishment', 'tourist_attraction', 'lodging', 'restaurant'],
-          fields: ['name', 'formatted_address', 'formatted_phone_number', 'website', 'rating', 'geometry']
-        }
-      )
-
-      autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace()
-        
-        if (!place || !place.name) {
-          console.log('❌ Kein Ort ausgewählt')
-          return
-        }
-
-        console.log('📍 Ort ausgewählt:', place)
-
-        setNewItineraryItem(prev => ({
-          ...prev,
-          title: place.name || '',
-          address: place.formatted_address || '',
-          phone: place.formatted_phone_number || '',
-          website: place.website || '',
-          rating: place.rating || 0,
-          latitude: place.geometry?.location?.lat() || 0,
-          longitude: place.geometry?.location?.lng() || 0
-        }))
-      })
-    }
-
-    initAutocomplete()
-  }, [])
 
   // =================================================================
 // ERWEITERTE PACKLISTEN-VERWALTUNG MIT TEMPLATES
@@ -5479,22 +5425,13 @@ const renderTabContent = () => {
 <div>
   <label className="block text-sm font-medium mb-2">Titel / Ort *</label>
   <input
-    ref={titleInputRef}
     type="text"
-    defaultValue={newItineraryItem.title || ''}
-    onBlur={(e) => {
-      // Synchronize manual input
-      if (!newItineraryItem.title || newItineraryItem.title === '') {
-        setNewItineraryItem({...newItineraryItem, title: e.target.value})
-      }
-    }}
-    placeholder="🔍 Tippe um zu suchen... (z.B. Hotel Schweizerhof)"
+    value={newItineraryItem.title || ''}
+    onChange={(e) => setNewItineraryItem({...newItineraryItem, title: e.target.value})}
+    placeholder="z.B. Hotel Schweizerhof"
     className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
     required
   />
-  <p className="text-xs text-gray-500 mt-1">
-    💡 Tippe den Namen und wähle aus den Dropdown-Vorschlägen
-  </p>
 </div>
 
 {/* Optional: Adresse manuell eingeben */}
