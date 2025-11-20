@@ -2054,9 +2054,9 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
       setNewItineraryItem({
         day: selectedDay,
         time: '09:00',
-        time_end: '', // Reset
-        start_date: '', // Reset
-        end_date: '', // Reset
+        time_end: '',
+        start_date: '',
+        end_date: '',
         title: '',
         details: '',
         type: '🎯 Aktivität',
@@ -2065,7 +2065,9 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
         website: '',
         rating: 0,
         latitude: 0,
-        longitude: 0
+        longitude: 0,
+        cost: 0,          // ← HINZUFÜGEN
+        expense_id: null  // ← HINZUFÜGEN
       })
       // Clear autocomplete state
       setLocationSuggestions([])
@@ -3540,7 +3542,9 @@ const getSettlementStats = () => {
                 website: '',
                 rating: 0,
                 latitude: 0,
-                longitude: 0
+                longitude: 0,
+                cost: 0,          // ← HINZUFÜGEN
+                expense_id: null  // ← HINZUFÜGEN
               })
               setShowItineraryModal(true)
             }}
@@ -3591,21 +3595,23 @@ const getSettlementStats = () => {
               onClick={() => {
                 setEditingItineraryItem(null)
                 setNewItineraryItem({
-                  day: selectedDay,
-                  time: '09:00',
-                  time_end: '',
-                  start_date: '',
-                  end_date: '',
-                  title: '',
-                  details: '',
-                  type: '🎯 Aktivität',
-                  address: '',
-                  phone: '',
-                  website: '',
-                  rating: 0,
-                  latitude: 0,
-                  longitude: 0
-                })
+                        day: selectedDay,
+                        time: '09:00',
+                        time_end: '',
+                        start_date: '',
+                        end_date: '',
+                        title: '',
+                        details: '',
+                        type: '🎯 Aktivität',
+                        address: '',
+                        phone: '',
+                        website: '',
+                        rating: 0,
+                        latitude: 0,
+                        longitude: 0,
+                        cost: 0,          // ← HINZUFÜGEN
+                        expense_id: null  // ← HINZUFÜGEN
+                      })
                 setShowItineraryModal(true)
               }}
               className="px-6 py-3 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
@@ -3772,7 +3778,9 @@ const getSettlementStats = () => {
                                   website: item.website || '',
                                   rating: item.rating || 0,
                                   latitude: item.latitude || 0,
-                                  longitude: item.longitude || 0
+                                  longitude: item.longitude || 0,
+                                  cost: item.cost || 0,
+                                  expense_id: item.expense_id || null
                                 })
                                 setShowItineraryModal(true)
                               }}
@@ -3947,7 +3955,9 @@ const itemsWithAddress = itineraryItems.filter(item =>
                             website: item.website || '',
                             rating: item.rating || 0,
                             latitude: item.latitude || 0,
-                            longitude: item.longitude || 0
+                            longitude: item.longitude || 0,
+                            cost: item.cost || 0,
+                            expense_id: item.expense_id || null
                           })
                           setActiveTab('itinerary')
                           setSelectedDay(item.day)
