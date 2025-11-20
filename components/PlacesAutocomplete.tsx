@@ -1,121 +1,156 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-
-// Declare google types
-declare global {
-  interface Window {
-    google: any
-  }
-  var google: any
-}
+import { useState, useEffect, useRef } from 'react'
 
 interface PlaceDetails {
   name: string
   address: string
-  phone?: string
-  website?: string
-  rating?: number
-  latitude?: number
-  longitude?: number
+  latitude: number
+  longitude: number
 }
 
-interface PlacesAutocompleteProps {
+interface NominatimAutocompleteProps {
   value: string
   onChange: (value: string) => void
   onPlaceSelect: (place: PlaceDetails) => void
   placeholder?: string
 }
 
-export default function PlacesAutocomplete({
+export default function NominatimAutocomplete({
   value,
   onChange,
   onPlaceSelect,
   placeholder = '🔍 Hotel, Restaurant suchen...'
-}: PlacesAutocompleteProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
+}: NominatimAutocompleteProps) {
+  const [suggestions, setSuggestions] = useState<any[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const timeoutRef = useRef<NodeJS.Timeout>()
+  const wrapperRef = useRef<HTMLDivElement>(null)
 
+  // Close suggestions when clicking outside
   useEffect(() => {
-    let autocomplete: any = null
-
-    const initAutocomplete = () => {
-      // Check if Google Maps is loaded
-      if (!window.google?.maps?.places) {
-        console.log('⏳ Waiting for Google Maps...')
-        setTimeout(initAutocomplete, 100)
-        return
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false)
       }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
-      if (!inputRef.current) {
-        setTimeout(initAutocomplete, 100)
-        return
-      }
+  const searchPlaces = async (query: string) => {
+    if (query.length < 3) {
+      setSuggestions([])
+      return
+    }
 
-      console.log('✅ Initializing Autocomplete')
-
-      try {
-        // Use the OLD working API (ignore the warning for now)
-        autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
-          types: ['establishment', 'tourist_attraction', 'lodging', 'restaurant'],
-          fields: ['name', 'formatted_address', 'formatted_phone_number', 'website', 'rating', 'geometry']
-        })
-
-        autocomplete.addListener('place_changed', () => {
-          const place = autocomplete.getPlace()
-
-          console.log('📍 Place changed:', place)
-
-          if (!place || !place.name) {
-            console.log('❌ No place selected')
-            return
+    setLoading(true)
+    try {
+      // Nominatim API (OpenStreetMap)
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?` +
+        new URLSearchParams({
+          q: query,
+          format: 'json',
+          addressdetails: '1',
+          limit: '5',
+          'accept-language': 'de',
+        }),
+        {
+          headers: {
+            'User-Agent': 'TravelTrackerPro/1.0'
           }
+        }
+      )
 
-          const details: PlaceDetails = {
-            name: place.name || '',
-            address: place.formatted_address || '',
-            phone: place.formatted_phone_number || '',
-            website: place.website || '',
-            rating: place.rating || 0,
-            latitude: place.geometry?.location?.lat() || 0,
-            longitude: place.geometry?.location?.lng() || 0
-          }
-
-          console.log('✅ Selected place:', details)
-          onPlaceSelect(details)
-        })
-
-        console.log('✅ Autocomplete initialized successfully')
-      } catch (error) {
-        console.error('❌ Error initializing autocomplete:', error)
+      if (response.ok) {
+        const data = await response.json()
+        console.log('📍 Nominatim Ergebnisse:', data)
+        setSuggestions(data)
+        setShowSuggestions(data.length > 0)
       }
+    } catch (error) {
+      console.error('❌ Nominatim Fehler:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleInputChange = (newValue: string) => {
+    onChange(newValue)
+
+    // Debounce search
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
     }
 
-    // Start initialization
-    initAutocomplete()
+    timeoutRef.current = setTimeout(() => {
+      searchPlaces(newValue)
+    }, 500)
+  }
 
-    // Cleanup
-    return () => {
-      if (autocomplete) {
-        window.google?.maps?.event?.clearInstanceListeners(autocomplete)
-      }
+  const handleSelectPlace = (place: any) => {
+    const details: PlaceDetails = {
+      name: place.display_name.split(',')[0],
+      address: place.display_name,
+      latitude: parseFloat(place.lat),
+      longitude: parseFloat(place.lon)
     }
-  }, [onPlaceSelect])
 
-  // Update input value when prop changes
-  useEffect(() => {
-    if (inputRef.current && value !== undefined) {
-      inputRef.current.value = value
-    }
-  }, [value])
+    console.log('✅ Ort ausgewählt:', details)
+    onChange(details.name)
+    onPlaceSelect(details)
+    setShowSuggestions(false)
+    setSuggestions([])
+  }
 
   return (
-    <input
-      ref={inputRef}
-      type="text"
-      defaultValue={value || ''}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
-    />
+    <div ref={wrapperRef} className="relative w-full">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => handleInputChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
+      />
+
+      {loading && (
+        <div className="absolute right-3 top-3">
+          <div className="animate-spin h-5 w-5 border-2 border-teal-600 border-t-transparent rounded-full" />
+        </div>
+      )}
+
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {suggestions.map((place, index) => (
+            <button
+              key={index}
+              type="button"
+              onClick={() => handleSelectPlace(place)}
+              className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b last:border-b-0 transition-colors"
+            >
+              <div className="flex items-start gap-2">
+                <span className="text-lg flex-shrink-0">📍</span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-900 truncate">
+                    {place.display_name.split(',')[0]}
+                  </div>
+                  <div className="text-sm text-gray-500 truncate">
+                    {place.display_name.split(',').slice(1).join(',')}
+                  </div>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {showSuggestions && suggestions.length === 0 && !loading && value.length >= 3 && (
+        <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg p-4 text-center text-gray-500 text-sm">
+          Keine Ergebnisse gefunden
+        </div>
+      )}
+    </div>
   )
 }
