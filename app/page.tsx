@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import NominatimAutocomplete from '@/components/NominatimAutocomplete'
+import PlacesAutocomplete from '@/components/PlacesAutocomplete'
 
 export default function TravelTrackerApp() {
   // ========== AUTH & USER STATE ==========
