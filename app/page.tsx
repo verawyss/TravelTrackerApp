@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import NominatimAutocomplete from '@/components/NominatimAutocomplete'
 
 export default function TravelTrackerApp() {
   // ========== AUTH & USER STATE ==========
@@ -5424,14 +5425,23 @@ const renderTabContent = () => {
 
 <div>
   <label className="block text-sm font-medium mb-2">Titel / Ort *</label>
-  <input
-    type="text"
+  <NominatimAutocomplete
     value={newItineraryItem.title || ''}
-    onChange={(e) => setNewItineraryItem({...newItineraryItem, title: e.target.value})}
-    placeholder="z.B. Hotel Schweizerhof"
-    className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-teal-500"
-    required
+    onChange={(value) => setNewItineraryItem({...newItineraryItem, title: value})}
+    onPlaceSelect={(place) => {
+      setNewItineraryItem({
+        ...newItineraryItem,
+        title: place.name,
+        address: place.address,
+        latitude: place.latitude,
+        longitude: place.longitude
+      })
+    }}
+    placeholder="🔍 Tippe um zu suchen... (z.B. Hotel Schweizerhof)"
   />
+  <p className="text-xs text-gray-500 mt-1">
+    💡 Tippe mindestens 3 Buchstaben für Vorschläge (OpenStreetMap)
+  </p>
 </div>
 
 {/* Optional: Adresse manuell eingeben */}
