@@ -3506,8 +3506,7 @@ const getSettlementStats = () => {
       </div>
     )
   }
-
-  const renderItineraryTab = () => {
+    const renderItineraryTab = () => {
     if (!currentTrip) {
       return (
         <div className="text-center py-12">
