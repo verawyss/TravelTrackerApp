@@ -82,7 +82,13 @@ export default function TravelTrackerApp() {
 
   // ========== ADMIN STATE ==========
   const [showAddUserModal, setShowAddUserModal] = useState(false)
-  const [newUser, setNewUser] = useState({ email: '', password: '', name: '' })
+  const [newUser, setNewUser] = useState({ 
+    email: '', 
+    password: '', 
+    name: '',
+    role: 'member' as 'admin' | 'member' | 'user',
+    addToTrips: [] as string[] // Trip IDs zu denen der User hinzugefügt wird
+  })
 
   // ========== TEAM MANAGEMENT STATE ==========
   const [tripMembers, setTripMembers] = useState<any[]>([])
@@ -1554,20 +1560,53 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
 
     setLoadingAction(true)
     try {
+      // 1. Erstelle Benutzer mit Rolle
       const response = await fetch('/api/admin/create-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newUser)
+        body: JSON.stringify({
+          email: newUser.email,
+          password: newUser.password,
+          name: newUser.name,
+          role: newUser.role
+        })
       })
 
       const result = await response.json()
 
       if (!response.ok) throw new Error(result.error || 'Fehler beim Erstellen')
 
-      setAuthMessage({ type: 'success', text: '✅ Benutzer erstellt!' })
+      // 2. Füge Benutzer zu ausgewählten Reisen hinzu
+      if (newUser.addToTrips.length > 0) {
+        for (const tripId of newUser.addToTrips) {
+          const { error: memberError } = await supabase
+            .from('trip_members')
+            .insert({
+              trip_id: tripId,
+              user_id: result.user.id,
+              role: 'member'
+            })
+          
+          if (memberError) {
+            console.error('Error adding to trip:', memberError)
+          }
+        }
+      }
+
+      setAuthMessage({ 
+        type: 'success', 
+        text: `✅ Benutzer erstellt! ${newUser.addToTrips.length > 0 ? `Zu ${newUser.addToTrips.length} Reise(n) hinzugefügt.` : ''}`
+      })
+      
       await loadUsers()
       setShowAddUserModal(false)
-      setNewUser({ email: '', password: '', name: '' })
+      setNewUser({ 
+        email: '', 
+        password: '', 
+        name: '',
+        role: 'member',
+        addToTrips: []
+      })
     } catch (error: any) {
       setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
     } finally {
@@ -6062,12 +6101,12 @@ const renderTabContent = () => {
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
           <h3 className="text-xl font-bold mb-4">Neuen Benutzer erstellen</h3>
           
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-2">Name</label>
+              <label className="block text-sm font-medium mb-2">Name *</label>
               <input 
                 type="text"
                 placeholder="Max Mustermann"
@@ -6078,7 +6117,7 @@ const renderTabContent = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">E-Mail</label>
+              <label className="block text-sm font-medium mb-2">E-Mail *</label>
               <input 
                 type="email"
                 placeholder="email@beispiel.de"
@@ -6089,14 +6128,96 @@ const renderTabContent = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Passwort</label>
-              <input 
-                type="password"
-                placeholder="••••••••"
-                value={newUser.password}
-                onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+              <label className="block text-sm font-medium mb-2">Passwort *</label>
+              <div className="flex gap-2">
+                <input 
+                  type="password"
+                  placeholder="••••••••"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                  className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const randomPw = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-4).toUpperCase()
+                    setNewUser({...newUser, password: randomPw})
+                  }}
+                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm"
+                  title="Zufälliges Passwort generieren"
+                >
+                  🎲
+                </button>
+              </div>
+              {newUser.password && (
+                <p className={`text-xs mt-1 ${
+                  newUser.password.length < 8 ? 'text-red-600' :
+                  newUser.password.length < 12 ? 'text-yellow-600' :
+                  'text-green-600'
+                }`}>
+                  {newUser.password.length < 8 ? '❌ Zu kurz (min. 8 Zeichen)' :
+                   newUser.password.length < 12 ? '⚠️ OK' :
+                   '✅ Stark'}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">Rolle *</label>
+              <select
+                value={newUser.role}
+                onChange={(e) => setNewUser({...newUser, role: e.target.value as 'admin' | 'member' | 'user'})}
                 className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-              />
+              >
+                <option value="member">👤 Member (Standard)</option>
+                <option value="user">👤 User</option>
+                <option value="admin">⭐ Admin</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                {newUser.role === 'admin' ? '⭐ Kann alle Benutzer und Reisen verwalten' :
+                 newUser.role === 'member' ? '👤 Kann an Reisen teilnehmen' :
+                 '👤 Basis-Benutzer'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Zu Reisen hinzufügen (optional)
+              </label>
+              <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3">
+                {allUserTrips.filter(t => t.status === 'active').length === 0 ? (
+                  <p className="text-sm text-gray-500">Keine aktiven Reisen vorhanden</p>
+                ) : (
+                  allUserTrips.filter(t => t.status === 'active').map(trip => (
+                    <label key={trip.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newUser.addToTrips.includes(trip.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setNewUser({
+                              ...newUser,
+                              addToTrips: [...newUser.addToTrips, trip.id]
+                            })
+                          } else {
+                            setNewUser({
+                              ...newUser,
+                              addToTrips: newUser.addToTrips.filter(id => id !== trip.id)
+                            })
+                          }
+                        }}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">
+                        {trip.flag} {trip.name} ({trip.destination})
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                💡 Der Benutzer wird automatisch als Member zu den ausgewählten Reisen hinzugefügt
+              </p>
             </div>
           </div>
 
@@ -6104,7 +6225,13 @@ const renderTabContent = () => {
             <button 
               onClick={() => {
                 setShowAddUserModal(false)
-                setNewUser({ email: '', password: '', name: '' })
+                setNewUser({ 
+                  email: '', 
+                  password: '', 
+                  name: '',
+                  role: 'member',
+                  addToTrips: []
+                })
               }}
               className="flex-1 px-6 py-2 border rounded-lg hover:bg-gray-50"
             >
@@ -6113,7 +6240,7 @@ const renderTabContent = () => {
             <button 
               onClick={createUser}
               disabled={loadingAction}
-              className="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700"
+              className="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
             >
               {loadingAction ? 'Erstelle...' : 'Erstellen'}
             </button>
