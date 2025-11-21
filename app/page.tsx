@@ -104,6 +104,9 @@ export default function TravelTrackerApp() {
     split_between: [] as string[],
     date: new Date().toISOString().split('T')[0]
   })
+  
+  // Separate state for external names input (to allow comma typing)
+  const [externalNamesInput, setExternalNamesInput] = useState('')
 
   // ========== SETTLEMENT STATE ==========
   const [settlements, setSettlements] = useState<any[]>([])
@@ -1813,6 +1816,7 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
       
       setShowExpenseModal(false)
       setEditingExpense(null)
+      setExternalNamesInput('') // Reset external names input
       setNewExpense({
         trip_id: currentTrip?.id || '', // Pre-select current trip for next expense
         category: '🍕 Essen & Trinken',
@@ -3235,6 +3239,14 @@ const getSettlementStats = () => {
                             split_between: expense.split_between,
                             date: expense.date
                           })
+                          
+                          // Load external names into input field
+                          const memberNames = tripMembers
+                            .filter(m => m.trip_id === expense.trip_id)
+                            .map(m => users.find(u => u.id === m.user_id)?.name || 'Unbekannt')
+                          const externalNames = expense.split_between.filter(name => !memberNames.includes(name))
+                          setExternalNamesInput(externalNames.join(', '))
+                          
                           setShowExpenseModal(true)
                         }}
                         className="p-2 hover:bg-gray-100 rounded"
@@ -5260,34 +5272,56 @@ const renderTabContent = () => {
                     <input 
                       type="text"
                       placeholder="z.B. externe Person 1, externe Person 2"
-                      value={newExpense.split_between.filter(name => 
-                        !tripMembers.some(m => 
-                          m.trip_id === newExpense.trip_id && 
-                          users.find(u => u.id === m.user_id)?.name === name
-                        )
-                      ).join(', ')}
+                      value={externalNamesInput}
                       onChange={(e) => {
-                        // Existierende Team-Mitglieder behalten
-                        const memberNames = tripMembers
-                          .filter(m => m.trip_id === newExpense.trip_id)
-                          .map(m => users.find(u => u.id === m.user_id)?.name || 'Unbekannt')
-                        const selectedMembers = newExpense.split_between.filter(name => memberNames.includes(name))
-                        
-                        // Neue externe Namen hinzufügen
-                        const externalNames = e.target.value
-                          .split(',')
-                          .map(s => s.trim())
-                          .filter(s => s.length > 0)
-                        
-                        setNewExpense({
-                          ...newExpense,
-                          split_between: [...selectedMembers, ...externalNames]
-                        })
+                        setExternalNamesInput(e.target.value)
+                      }}
+                      onBlur={() => {
+                        // Bei Verlassen des Feldes: Namen zum Array hinzufügen
+                        if (externalNamesInput.trim()) {
+                          const memberNames = tripMembers
+                            .filter(m => m.trip_id === newExpense.trip_id)
+                            .map(m => users.find(u => u.id === m.user_id)?.name || 'Unbekannt')
+                          const selectedMembers = newExpense.split_between.filter(name => memberNames.includes(name))
+                          
+                          const externalNames = externalNamesInput
+                            .split(',')
+                            .map(s => s.trim())
+                            .filter(s => s.length > 0)
+                          
+                          setNewExpense({
+                            ...newExpense,
+                            split_between: Array.from(new Set([...selectedMembers, ...externalNames]))
+                          })
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        // Bei Enter: Namen hinzufügen
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          if (externalNamesInput.trim()) {
+                            const memberNames = tripMembers
+                              .filter(m => m.trip_id === newExpense.trip_id)
+                              .map(m => users.find(u => u.id === m.user_id)?.name || 'Unbekannt')
+                            const selectedMembers = newExpense.split_between.filter(name => memberNames.includes(name))
+                            
+                            const externalNames = externalNamesInput
+                              .split(',')
+                              .map(s => s.trim())
+                              .filter(s => s.length > 0)
+                            
+                            setNewExpense({
+                              ...newExpense,
+                              split_between: Array.from(new Set([...selectedMembers, ...externalNames]))
+                            })
+                            setExternalNamesInput('') // Clear input after adding
+                          }
+                        }
                       }}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      💡 Komma-getrennt für mehrere Personen
+                      💡 Komma-getrennt eingeben, dann Enter drücken oder Feld verlassen
                     </p>
                   </div>
                   
@@ -5351,6 +5385,7 @@ const renderTabContent = () => {
               onClick={() => {
                 setShowExpenseModal(false)
                 setEditingExpense(null)
+                setExternalNamesInput('') // Reset external names input
                 setNewExpense({
                   trip_id: currentTrip?.id || '', // Add missing trip_id
                   category: '🍕 Essen & Trinken',
