@@ -1,13 +1,12 @@
 // app/api/admin/create-user/route.ts
-// API Route zum Erstellen von Benutzern ohne E-Mail-Benachrichtigung
+// Updated version with role support
 
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
-// Admin-Client mit Service Role Key (kann E-Mail-Bestätigung umgehen)
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!, // Braucht Service Role Key!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
   {
     auth: {
       autoRefreshToken: false,
@@ -18,23 +17,28 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: Request) {
   try {
-    const { email, password, name } = await request.json()
+    const { email, password, name, role } = await request.json()
 
     // Validierung
     if (!email || !password || !name) {
       return NextResponse.json(
-        { error: 'Alle Felder sind erforderlich' },
+        { error: 'Name, E-Mail und Passwort sind erforderlich' },
         { status: 400 }
       )
     }
 
-    // 1. Erstelle Auth-User mit Admin-Client (OHNE E-Mail-Bestätigung)
+    // Rolle validieren (falls übergeben)
+    const validRoles = ['admin', 'member', 'user']
+    const userRole = role && validRoles.includes(role) ? role : 'member'
+
+    // 1. Erstelle Auth-User OHNE E-Mail-Bestätigung
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // ← WICHTIG: E-Mail automatisch bestätigt!
+      email_confirm: true, // E-Mail automatisch bestätigt!
       user_metadata: {
-        name
+        name,
+        role: userRole
       }
     })
 
@@ -46,14 +50,14 @@ export async function POST(request: Request) {
       throw new Error('Benutzer konnte nicht erstellt werden')
     }
 
-    // 2. Erstelle Eintrag in users-Tabelle
+    // 2. Erstelle Eintrag in users-Tabelle mit Rolle
     const { error: dbError } = await supabaseAdmin
       .from('users')
       .insert({
         id: authData.user.id,
         email: email,
         name: name,
-        role: 'user' // Standard-Rolle
+        role: userRole // Übergebe die gewählte Rolle
       })
 
     if (dbError) {
@@ -67,9 +71,10 @@ export async function POST(request: Request) {
       user: {
         id: authData.user.id,
         email: authData.user.email,
-        name
+        name,
+        role: userRole
       },
-      message: `Benutzer erfolgreich erstellt! Temporäres Passwort: ${password}`
+      message: `Benutzer erfolgreich erstellt als ${userRole === 'admin' ? 'Admin' : 'Member'}`
     })
 
   } catch (error: any) {
