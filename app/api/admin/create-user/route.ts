@@ -1,140 +1,81 @@
-// ========================================
-// DATEI: app/api/admin/create-user/route.ts
-// ========================================
-// KORRIGIERTE VERSION - Ohne auth-helpers-nextjs
+// app/api/admin/create-user/route.ts
+// API Route zum Erstellen von Benutzern ohne E-Mail-Benachrichtigung
 
-import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
+
+// Admin-Client mit Service Role Key (kann E-Mail-Bestätigung umgehen)
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!, // Braucht Service Role Key!
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+)
 
 export async function POST(request: Request) {
   try {
     const { email, password, name } = await request.json()
 
-    // Validation
-    if (!email || !password) {
+    // Validierung
+    if (!email || !password || !name) {
       return NextResponse.json(
-        { error: 'E-Mail und Passwort sind erforderlich' },
+        { error: 'Alle Felder sind erforderlich' },
         { status: 400 }
       )
     }
 
-    if (password.length < 6) {
-      return NextResponse.json(
-        { error: 'Passwort muss mindestens 6 Zeichen lang sein' },
-        { status: 400 }
-      )
-    }
-
-    // Get auth token from cookie
-    const cookieStore = cookies()
-    const authCookie = cookieStore.get('sb-tpaczpfczbznmabtcpxe-auth-token')
-    
-    if (!authCookie) {
-      return NextResponse.json({ error: 'Nicht authentifiziert' }, { status: 401 })
-    }
-
-    // Create regular Supabase client to check admin
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-
-    // Get session from cookie value
-    let session
-    try {
-      const authData = JSON.parse(authCookie.value)
-      session = authData
-    } catch (e) {
-      return NextResponse.json({ error: 'Ungültige Session' }, { status: 401 })
-    }
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Keine Session gefunden' }, { status: 401 })
-    }
-
-    // Check if current user is admin
-    const { data: currentUser } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', session.user.id)
-      .single()
-
-    if (!currentUser || currentUser.role !== 'admin') {
-      return NextResponse.json({ error: 'Keine Admin-Berechtigung' }, { status: 403 })
-    }
-
-    // Get service role key
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    
-    if (!serviceRoleKey) {
-      return NextResponse.json(
-        { error: 'SUPABASE_SERVICE_ROLE_KEY nicht konfiguriert' },
-        { status: 500 }
-      )
-    }
-
-    // Create admin client with service role
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    )
-
-    // Create user with admin client (bypasses email confirmation)
+    // 1. Erstelle Auth-User mit Admin-Client (OHNE E-Mail-Bestätigung)
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // ✅ Auto-confirm email
+      email_confirm: true, // ← WICHTIG: E-Mail automatisch bestätigt!
       user_metadata: {
-        name: name || email.split('@')[0]
+        name
       }
     })
 
-    if (authError) throw authError
+    if (authError) {
+      throw new Error(`Auth-Fehler: ${authError.message}`)
+    }
 
-    // Insert into users table
+    if (!authData.user) {
+      throw new Error('Benutzer konnte nicht erstellt werden')
+    }
+
+    // 2. Erstelle Eintrag in users-Tabelle
     const { error: dbError } = await supabaseAdmin
       .from('users')
       .insert({
         id: authData.user.id,
-        email,
-        name: name || email.split('@')[0],
-        role: 'member'
+        email: email,
+        name: name,
+        role: 'user' // Standard-Rolle
       })
 
     if (dbError) {
-      // If user exists in table, update instead
-      if (dbError.code === '23505') { // Unique violation
-        await supabaseAdmin
-          .from('users')
-          .update({
-            email,
-            name: name || email.split('@')[0]
-          })
-          .eq('id', authData.user.id)
-      } else {
-        throw dbError
-      }
+      // Rollback: Lösche Auth-User wenn DB-Insert fehlschlägt
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id)
+      throw new Error(`Datenbank-Fehler: ${dbError.message}`)
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       user: {
         id: authData.user.id,
-        email: authData.user.email
-      }
+        email: authData.user.email,
+        name
+      },
+      message: `Benutzer erfolgreich erstellt! Temporäres Passwort: ${password}`
     })
 
   } catch (error: any) {
-    console.error('Error creating user:', error)
+    console.error('Create user error:', error)
     return NextResponse.json(
-      { error: error.message || 'Fehler beim Erstellen des Users' },
+      { error: error.message || 'Interner Server-Fehler' },
       { status: 500 }
     )
   }
