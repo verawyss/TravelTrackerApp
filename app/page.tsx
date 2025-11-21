@@ -3244,7 +3244,7 @@ const getSettlementStats = () => {
                           const memberNames = tripMembers
                             .filter(m => m.trip_id === expense.trip_id)
                             .map(m => users.find(u => u.id === m.user_id)?.name || 'Unbekannt')
-                          const externalNames = expense.split_between.filter(name => !memberNames.includes(name))
+                          const externalNames = expense.split_between.filter((name: string) => !memberNames.includes(name))
                           setExternalNamesInput(externalNames.join(', '))
                           
                           setShowExpenseModal(true)
