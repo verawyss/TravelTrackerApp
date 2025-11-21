@@ -159,8 +159,11 @@ const packingCategories = [
     rating: 0,
     latitude: 0,
     longitude: 0,
-    cost: 0,           // ← NEU: Kosten
-    expense_id: null   // ← NEU: Verknüpfte Ausgabe
+    cost: 0,
+    expense_id: null,
+    // Split-Felder für Kostenteilung
+    paid_by: '',
+    split_between: [] as string[]
   })
 
   // =================================================================
@@ -2017,18 +2020,83 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
       return
     }
 
+    // Validierung für Kostenteilung
+    if (newItineraryItem.cost > 0) {
+      if (!newItineraryItem.paid_by) {
+        setAuthMessage({ type: 'error', text: '❌ Bitte wähle wer die Kosten bezahlt hat!' })
+        return
+      }
+      if (newItineraryItem.split_between.length === 0) {
+        setAuthMessage({ type: 'error', text: '❌ Bitte wähle mindestens eine Person für die Kostenteilung!' })
+        return
+      }
+    }
+
     setLoadingAction(true)
     try {
+      let expenseId = editingItineraryItem?.expense_id || null
+
+      // Wenn Kosten angegeben sind, erstelle/update Expense
+      if (newItineraryItem.cost > 0) {
+        const expenseData = {
+          trip_id: currentTrip.id,
+          category: newItineraryItem.type || '🎯 Aktivität',
+          description: newItineraryItem.title.trim(),
+          amount: newItineraryItem.cost,
+          paid_by: newItineraryItem.paid_by,
+          split_between: newItineraryItem.split_between,
+          date: newItineraryItem.start_date || new Date().toISOString().split('T')[0]
+        }
+
+        if (expenseId) {
+          // Update bestehende Expense
+          const { error } = await supabase
+            .from('expenses')
+            .update(expenseData)
+            .eq('id', expenseId)
+          
+          if (error) throw error
+        } else {
+          // Erstelle neue Expense
+          const { data, error } = await supabase
+            .from('expenses')
+            .insert(expenseData)
+            .select()
+            .single()
+          
+          if (error) throw error
+          expenseId = data.id
+        }
+      } else if (expenseId) {
+        // Wenn Kosten entfernt wurden, lösche die verknüpfte Expense
+        const { error } = await supabase
+          .from('expenses')
+          .delete()
+          .eq('id', expenseId)
+        
+        if (error) throw error
+        expenseId = null
+      }
+
+      // Erstelle/Update Itinerary Item
       const itineraryData = {
         trip_id: currentTrip.id,
         day: newItineraryItem.day,
         time: newItineraryItem.time,
-        time_end: newItineraryItem.time_end || null, // NEW: End time (optional)
-        start_date: newItineraryItem.start_date || null, // NEW: Start date (optional)
-        end_date: newItineraryItem.end_date || null, // NEW: End date (optional)
+        time_end: newItineraryItem.time_end || null,
+        start_date: newItineraryItem.start_date || null,
+        end_date: newItineraryItem.end_date || null,
         title: newItineraryItem.title.trim(),
         details: newItineraryItem.details.trim(),
-        type: newItineraryItem.type
+        type: newItineraryItem.type,
+        address: newItineraryItem.address || null,
+        phone: newItineraryItem.phone || null,
+        website: newItineraryItem.website || null,
+        rating: newItineraryItem.rating || 0,
+        latitude: newItineraryItem.latitude || 0,
+        longitude: newItineraryItem.longitude || 0,
+        cost: newItineraryItem.cost || 0,
+        expense_id: expenseId
       }
 
       if (editingItineraryItem) {
@@ -2048,7 +2116,12 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
         setAuthMessage({ type: 'success', text: '✅ Aktivität hinzugefügt!' })
       }
 
+      // Reload data
       await loadItineraryItems(currentTrip.id)
+      if (newItineraryItem.cost > 0) {
+        await loadExpenses(currentTrip.id)
+      }
+      
       setShowItineraryModal(false)
       setEditingItineraryItem(null)
       setNewItineraryItem({
@@ -2066,8 +2139,10 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
         rating: 0,
         latitude: 0,
         longitude: 0,
-        cost: 0,          // ← HINZUFÜGEN
-        expense_id: null  // ← HINZUFÜGEN
+        cost: 0,
+        expense_id: null,
+        paid_by: '',
+        split_between: []
       })
       // Clear autocomplete state
       setLocationSuggestions([])
@@ -3543,8 +3618,10 @@ const getSettlementStats = () => {
                 rating: 0,
                 latitude: 0,
                 longitude: 0,
-                cost: 0,          // ← HINZUFÜGEN
-                expense_id: null  // ← HINZUFÜGEN
+                cost: 0,
+                expense_id: null,
+                paid_by: '',
+                split_between: []
               })
               setShowItineraryModal(true)
             }}
@@ -3609,8 +3686,10 @@ const getSettlementStats = () => {
                         rating: 0,
                         latitude: 0,
                         longitude: 0,
-                        cost: 0,          // ← HINZUFÜGEN
-                        expense_id: null  // ← HINZUFÜGEN
+                        cost: 0,
+                        expense_id: null,
+                        paid_by: '',
+                        split_between: []
                       })
                 setShowItineraryModal(true)
               }}
@@ -3762,8 +3841,26 @@ const getSettlementStats = () => {
                           {/* Action buttons */}
                           <div className="flex gap-2 flex-shrink-0">
                             <button
-                              onClick={() => {
+                              onClick={async () => {
                                 setEditingItineraryItem(item)
+                                
+                                // Load split data from expense if exists
+                                let paid_by = ''
+                                let split_between: string[] = []
+                                
+                                if (item.expense_id) {
+                                  const { data: expense } = await supabase
+                                    .from('expenses')
+                                    .select('paid_by, split_between')
+                                    .eq('id', item.expense_id)
+                                    .single()
+                                  
+                                  if (expense) {
+                                    paid_by = expense.paid_by
+                                    split_between = expense.split_between
+                                  }
+                                }
+                                
                                 setNewItineraryItem({
                                   day: item.day,
                                   time: item.time,
@@ -3780,7 +3877,9 @@ const getSettlementStats = () => {
                                   latitude: item.latitude || 0,
                                   longitude: item.longitude || 0,
                                   cost: item.cost || 0,
-                                  expense_id: item.expense_id || null
+                                  expense_id: item.expense_id || null,
+                                  paid_by,
+                                  split_between
                                 })
                                 setShowItineraryModal(true)
                               }}
@@ -3939,8 +4038,26 @@ const itemsWithAddress = itineraryItems.filter(item =>
                       
                       {/* Edit button */}
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           setEditingItineraryItem(item)
+                          
+                          // Load split data from expense if exists
+                          let paid_by = ''
+                          let split_between: string[] = []
+                          
+                          if (item.expense_id) {
+                            const { data: expense } = await supabase
+                              .from('expenses')
+                              .select('paid_by, split_between')
+                              .eq('id', item.expense_id)
+                              .single()
+                            
+                            if (expense) {
+                              paid_by = expense.paid_by
+                              split_between = expense.split_between
+                            }
+                          }
+                          
                           setNewItineraryItem({
                             day: item.day,
                             time: item.time,
@@ -3957,7 +4074,9 @@ const itemsWithAddress = itineraryItems.filter(item =>
                             latitude: item.latitude || 0,
                             longitude: item.longitude || 0,
                             cost: item.cost || 0,
-                            expense_id: item.expense_id || null
+                            expense_id: item.expense_id || null,
+                            paid_by,
+                            split_between
                           })
                           setActiveTab('itinerary')
                           setSelectedDay(item.day)
@@ -5020,30 +5139,200 @@ const renderTabContent = () => {
 
             <div>
               <label className="block text-sm font-medium mb-2">Bezahlt von *</label>
-              <input 
-                type="text"
-                placeholder="Name"
-                value={newExpense.paid_by}
-                onChange={(e) => setNewExpense({...newExpense, paid_by: e.target.value})}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-              />
+              {newExpense.trip_id ? (
+                <div className="space-y-2">
+                  {/* Dropdown für Reise-Mitglieder */}
+                  <select 
+                    value={newExpense.paid_by}
+                    onChange={(e) => setNewExpense({...newExpense, paid_by: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="">-- Person auswählen --</option>
+                    {tripMembers
+                      .filter(m => m.trip_id === newExpense.trip_id)
+                      .map(member => {
+                        const user = users.find(u => u.id === member.user_id)
+                        return (
+                          <option key={member.user_id} value={user?.name || member.user_id}>
+                            {user?.name || 'Unbekannt'}
+                          </option>
+                        )
+                      })}
+                  </select>
+                  
+                  {/* Freitext-Eingabe für andere Personen */}
+                  <input 
+                    type="text"
+                    placeholder="Oder anderen Namen eingeben..."
+                    value={!tripMembers.some(m => m.trip_id === newExpense.trip_id && users.find(u => u.id === m.user_id)?.name === newExpense.paid_by) ? newExpense.paid_by : ''}
+                    onChange={(e) => setNewExpense({...newExpense, paid_by: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 text-sm"
+                  />
+                  <p className="text-xs text-gray-500">
+                    💡 Wähle aus der Liste oder gib einen anderen Namen ein
+                  </p>
+                </div>
+              ) : (
+                <input 
+                  type="text"
+                  placeholder="Erst Reise auswählen..."
+                  disabled
+                  className="w-full px-4 py-2 border rounded-lg bg-gray-100 text-gray-500"
+                />
+              )}
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2">Geteilt zwischen * (Komma-getrennt)</label>
-              <input 
-                type="text"
-                placeholder="z.B. Anna, Ben, Clara"
-                value={newExpense.split_between.join(', ')}
-                onChange={(e) => setNewExpense({
-                  ...newExpense, 
-                  split_between: e.target.value.split(',').map(s => s.trim()).filter(s => s)
-                })}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Trennen Sie Namen mit Kommas
-              </p>
+              <label className="block text-sm font-medium mb-2">Geteilt zwischen *</label>
+              {newExpense.trip_id ? (
+                <div className="space-y-3">
+                  {/* Checkboxen für Reise-Mitglieder */}
+                  <div className="border rounded-lg p-3 space-y-2 bg-gray-50">
+                    <p className="text-sm font-medium text-gray-700 mb-2">Reise-Mitglieder:</p>
+                    {tripMembers
+                      .filter(m => m.trip_id === newExpense.trip_id)
+                      .map(member => {
+                        const user = users.find(u => u.id === member.user_id)
+                        const userName = user?.name || 'Unbekannt'
+                        return (
+                          <label key={member.user_id} className="flex items-center gap-2 p-2 hover:bg-gray-100 rounded cursor-pointer">
+                            <input 
+                              type="checkbox"
+                              checked={newExpense.split_between.includes(userName)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setNewExpense({
+                                    ...newExpense,
+                                    split_between: [...newExpense.split_between, userName]
+                                  })
+                                } else {
+                                  setNewExpense({
+                                    ...newExpense,
+                                    split_between: newExpense.split_between.filter(name => name !== userName)
+                                  })
+                                }
+                              }}
+                              className="w-4 h-4"
+                            />
+                            <span>{userName}</span>
+                          </label>
+                        )
+                      })}
+                    
+                    {/* Quick Actions */}
+                    <div className="flex gap-2 pt-2 border-t border-gray-200">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allNames = tripMembers
+                            .filter(m => m.trip_id === newExpense.trip_id)
+                            .map(m => users.find(u => u.id === m.user_id)?.name || 'Unbekannt')
+                          setNewExpense({
+                            ...newExpense,
+                            split_between: [...new Set([...newExpense.split_between, ...allNames])]
+                          })
+                        }}
+                        className="text-xs px-3 py-1 bg-teal-100 hover:bg-teal-200 rounded"
+                      >
+                        Alle auswählen
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const memberNames = tripMembers
+                            .filter(m => m.trip_id === newExpense.trip_id)
+                            .map(m => users.find(u => u.id === m.user_id)?.name || 'Unbekannt')
+                          setNewExpense({
+                            ...newExpense,
+                            split_between: newExpense.split_between.filter(name => !memberNames.includes(name))
+                          })
+                        }}
+                        className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded"
+                      >
+                        Keine auswählen
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Zusätzliche Personen (Freitext) */}
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-2">Weitere Personen hinzufügen:</p>
+                    <input 
+                      type="text"
+                      placeholder="z.B. externe Person 1, externe Person 2"
+                      value={newExpense.split_between.filter(name => 
+                        !tripMembers.some(m => 
+                          m.trip_id === newExpense.trip_id && 
+                          users.find(u => u.id === m.user_id)?.name === name
+                        )
+                      ).join(', ')}
+                      onChange={(e) => {
+                        // Existierende Team-Mitglieder behalten
+                        const memberNames = tripMembers
+                          .filter(m => m.trip_id === newExpense.trip_id)
+                          .map(m => users.find(u => u.id === m.user_id)?.name || 'Unbekannt')
+                        const selectedMembers = newExpense.split_between.filter(name => memberNames.includes(name))
+                        
+                        // Neue externe Namen hinzufügen
+                        const externalNames = e.target.value
+                          .split(',')
+                          .map(s => s.trim())
+                          .filter(s => s.length > 0)
+                        
+                        setNewExpense({
+                          ...newExpense,
+                          split_between: [...selectedMembers, ...externalNames]
+                        })
+                      }}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      💡 Komma-getrennt für mehrere Personen
+                    </p>
+                  </div>
+                  
+                  {/* Ausgewählte Personen anzeigen */}
+                  {newExpense.split_between.length > 0 && (
+                    <div className="p-3 bg-teal-50 border border-teal-200 rounded-lg">
+                      <p className="text-sm font-medium text-teal-900 mb-1">
+                        Ausgewählt ({newExpense.split_between.length}):
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {newExpense.split_between.map((name, index) => (
+                          <span 
+                            key={index} 
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-teal-100 text-teal-800 rounded text-xs"
+                          >
+                            {name}
+                            <button
+                              type="button"
+                              onClick={() => setNewExpense({
+                                ...newExpense,
+                                split_between: newExpense.split_between.filter(n => n !== name)
+                              })}
+                              className="hover:text-teal-900 font-bold"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                      {newExpense.amount && newExpense.split_between.length > 0 && (
+                        <p className="text-sm font-medium text-teal-700 mt-2">
+                          Pro Person: {(parseFloat(newExpense.amount) / newExpense.split_between.length).toFixed(2)} {allUserTrips.find(t => t.id === newExpense.trip_id)?.currency || 'EUR'}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <input 
+                  type="text"
+                  placeholder="Erst Reise auswählen..."
+                  disabled
+                  className="w-full px-4 py-2 border rounded-lg bg-gray-100 text-gray-500"
+                />
+              )}
             </div>
 
             <div>
@@ -5274,7 +5563,9 @@ const renderTabContent = () => {
         title: place.name,
         address: place.address,
         latitude: place.latitude,
-        longitude: place.longitude
+        longitude: place.longitude,
+        cost: newItineraryItem.cost || 0,
+        expense_id: newItineraryItem.expense_id || null
       })
     }}
     placeholder="🔍 Tippe um zu suchen... (z.B. Hotel Schweizerhof)"
@@ -5344,6 +5635,100 @@ const renderTabContent = () => {
     💡 Wird automatisch in Ausgaben-Tab übernommen
   </p>
 </div>
+
+{/* Kostenteilung - nur anzeigen wenn Kosten > 0 */}
+{newItineraryItem.cost > 0 && (
+  <div className="space-y-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
+    <h4 className="font-semibold text-purple-900 flex items-center gap-2">
+      💰 Kostenteilung
+    </h4>
+    
+    {/* Bezahlt von */}
+    <div>
+      <label className="block text-sm font-medium mb-2">Bezahlt von *</label>
+      <select 
+        value={newItineraryItem.paid_by}
+        onChange={(e) => setNewItineraryItem({...newItineraryItem, paid_by: e.target.value})}
+        className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500"
+      >
+        <option value="">-- Wähle Person --</option>
+        {tripMembers.map(member => (
+          <option key={member.user_id} value={member.user_id}>
+            {users.find(u => u.id === member.user_id)?.name || 'Unbekannt'}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    {/* Split zwischen */}
+    <div>
+      <label className="block text-sm font-medium mb-2">Aufteilen zwischen *</label>
+      <div className="space-y-2">
+        {tripMembers.map(member => {
+          const user = users.find(u => u.id === member.user_id)
+          return (
+            <label key={member.user_id} className="flex items-center gap-2 p-2 hover:bg-purple-100 rounded cursor-pointer">
+              <input 
+                type="checkbox"
+                checked={newItineraryItem.split_between.includes(member.user_id)}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setNewItineraryItem({
+                      ...newItineraryItem,
+                      split_between: [...newItineraryItem.split_between, member.user_id]
+                    })
+                  } else {
+                    setNewItineraryItem({
+                      ...newItineraryItem,
+                      split_between: newItineraryItem.split_between.filter(id => id !== member.user_id)
+                    })
+                  }
+                }}
+                className="w-4 h-4"
+              />
+              <span>{user?.name || 'Unbekannt'}</span>
+            </label>
+          )
+        })}
+        
+        {/* Quick Actions */}
+        <div className="flex gap-2 pt-2 border-t border-purple-200">
+          <button
+            type="button"
+            onClick={() => setNewItineraryItem({
+              ...newItineraryItem,
+              split_between: tripMembers.map(m => m.user_id)
+            })}
+            className="text-xs px-3 py-1 bg-purple-100 hover:bg-purple-200 rounded"
+          >
+            Alle auswählen
+          </button>
+          <button
+            type="button"
+            onClick={() => setNewItineraryItem({
+              ...newItineraryItem,
+              split_between: []
+            })}
+            className="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded"
+          >
+            Keine auswählen
+          </button>
+        </div>
+      </div>
+      
+      {/* Kosten-Vorschau */}
+      {newItineraryItem.split_between.length > 0 && (
+        <div className="mt-2 p-2 bg-purple-100 rounded text-sm">
+          <span className="font-medium">Pro Person: </span>
+          <span className="text-purple-700 font-bold">
+            {(newItineraryItem.cost / newItineraryItem.split_between.length).toFixed(2)} {currentTrip?.currency || 'CHF'}
+          </span>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
 {/* Details-Vorschau */}
 {newItineraryItem.address && (
   <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
@@ -5418,7 +5803,9 @@ const renderTabContent = () => {
                   latitude: 0,
                   longitude: 0,
                   cost: 0,
-                  expense_id: null
+                  expense_id: null,
+                  paid_by: '',
+                  split_between: []
                 })
                 // Clear autocomplete state
                 setLocationSuggestions([])
