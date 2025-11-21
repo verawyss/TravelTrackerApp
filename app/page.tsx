@@ -5229,7 +5229,7 @@ const renderTabContent = () => {
                             .map(m => users.find(u => u.id === m.user_id)?.name || 'Unbekannt')
                           setNewExpense({
                             ...newExpense,
-                            split_between: [...new Set([...newExpense.split_between, ...allNames])]
+                            split_between: Array.from(new Set([...newExpense.split_between, ...allNames]))
                           })
                         }}
                         className="text-xs px-3 py-1 bg-teal-100 hover:bg-teal-200 rounded"
