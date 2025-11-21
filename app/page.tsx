@@ -86,7 +86,7 @@ export default function TravelTrackerApp() {
     email: '', 
     password: '', 
     name: '',
-    role: 'member' as 'admin' | 'member' | 'user',
+    role: 'member' as 'admin' | 'member',
     addToTrips: [] as string[] // Trip IDs zu denen der User hinzugefügt wird
   })
 
@@ -6166,17 +6166,16 @@ const renderTabContent = () => {
               <label className="block text-sm font-medium mb-2">Rolle *</label>
               <select
                 value={newUser.role}
-                onChange={(e) => setNewUser({...newUser, role: e.target.value as 'admin' | 'member' | 'user'})}
+                onChange={(e) => setNewUser({...newUser, role: e.target.value as 'admin' | 'member'})}
                 className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
               >
                 <option value="member">👤 Member (Standard)</option>
-                <option value="user">👤 User</option>
                 <option value="admin">⭐ Admin</option>
               </select>
               <p className="text-xs text-gray-500 mt-1">
-                {newUser.role === 'admin' ? '⭐ Kann alle Benutzer und Reisen verwalten' :
-                 newUser.role === 'member' ? '👤 Kann an Reisen teilnehmen' :
-                 '👤 Basis-Benutzer'}
+                {newUser.role === 'admin' 
+                  ? '⭐ Kann alle Benutzer und Reisen verwalten' 
+                  : '👤 Kann an Reisen teilnehmen'}
               </p>
             </div>
 
