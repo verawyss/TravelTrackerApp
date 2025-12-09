@@ -1557,7 +1557,84 @@ const filteredCategories = (Object.entries(groupedItems) as [string, any[]][]).f
       setAuthMessage({ type: 'error', text: '❌ Alle Felder sind Pflichtfelder!' })
       return
     }
+// ========== NEUE ADMIN FUNCTIONS ==========
+const addMemberToTrip = async () => {
+  if (!memberToAdd || !selectedTripForAdmin) {
+    setAuthMessage({ type: 'error', text: '❌ Bitte Benutzer auswählen' })
+    return
+  }
 
+  setLoadingAction(true)
+  try {
+    const { data: existing } = await supabase
+      .from('trip_members')
+      .select('*')
+      .eq('trip_id', selectedTripForAdmin)
+      .eq('user_id', memberToAdd)
+      .single()
+
+    if (existing) {
+      setAuthMessage({ type: 'error', text: '❌ Benutzer ist bereits Mitglied' })
+      setLoadingAction(false)
+      return
+    }
+
+    const { error } = await supabase
+      .from('trip_members')
+      .insert({
+        trip_id: selectedTripForAdmin,
+        user_id: memberToAdd,
+        role: memberRoleToAdd
+      })
+
+    if (error) throw error
+
+    setAuthMessage({ type: 'success', text: '✅ Mitglied hinzugefügt!' })
+    await loadTripMembers(selectedTripForAdmin)
+    setShowAddMemberToTripModal(false)
+    setMemberToAdd('')
+  } catch (error: any) {
+    setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+  } finally {
+    setLoadingAction(false)
+  }
+}
+
+const removeMemberFromTrip = async (tripId: string, userId: string) => {
+  if (!confirm('Mitglied aus dieser Reise entfernen?')) return
+
+  try {
+    const { error } = await supabase
+      .from('trip_members')
+      .delete()
+      .eq('trip_id', tripId)
+      .eq('user_id', userId)
+
+    if (error) throw error
+
+    setAuthMessage({ type: 'success', text: '✅ Mitglied entfernt!' })
+    await loadTripMembers(tripId)
+  } catch (error: any) {
+    setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+  }
+}
+
+const updateMemberRole = async (tripId: string, userId: string, newRole: string) => {
+  try {
+    const { error } = await supabase
+      .from('trip_members')
+      .update({ role: newRole })
+      .eq('trip_id', tripId)
+      .eq('user_id', userId)
+
+    if (error) throw error
+
+    setAuthMessage({ type: 'success', text: '✅ Rolle aktualisiert!' })
+    await loadTripMembers(tripId)
+  } catch (error: any) {
+    setAuthMessage({ type: 'error', text: `❌ ${error.message}` })
+  }
+}
     setLoadingAction(true)
     try {
       // 1. Erstelle Benutzer mit Rolle
@@ -4167,146 +4244,77 @@ const itemsWithAddress = itineraryItems.filter(item =>
     )
   }
 
-  const renderTeamTab = () => {
-    if (!currentTrip) {
-      return (
-        <div className="text-center py-12">
-          <p className="text-gray-600">Bitte wähle zuerst eine Reise aus</p>
+ // Im renderTabContent oder wo auch immer der Team-Tab ist
+case 'friends': {
+  const currentMember = tripMembers.find(m => 
+    m.trip_id === currentTrip?.id && m.user_id === currentUser?.id
+  )
+  
+  const isOwnerOrAdmin = currentMember && (currentMember.role === 'owner' || currentMember.role === 'admin')
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Team-Mitglieder</h2>
+      </div>
+
+      <div className="bg-white rounded-lg shadow">
+        <div className="p-6 border-b">
+          <h3 className="font-semibold text-lg">
+            Mitglieder ({tripMembers.filter(m => m.trip_id === currentTrip?.id).length})
+          </h3>
         </div>
-      )
-    }
-
-    const currentMember = tripMembers.find(m => m.user_id === currentUser?.id)
-    const isOwnerOrAdmin = currentMember && (currentMember.role === 'owner' || currentMember.role === 'admin')
-
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Team-Verwaltung</h2>
-          {isOwnerOrAdmin && (
-            <button
-              onClick={() => setShowInviteModal(true)}
-              className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
-            >
-              + Mitglied einladen
-            </button>
-          )}
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-3xl">👥</span>
-              <span className="text-sm text-gray-600">Mitglieder</span>
-            </div>
-            <div className="text-2xl font-bold">{tripMembers.length}</div>
-            <div className="text-sm text-gray-600 mt-1">
-              Aktive Teilnehmer
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-3xl">📧</span>
-              <span className="text-sm text-gray-600">Einladungen</span>
-            </div>
-            <div className="text-2xl font-bold">{pendingInvitations.length}</div>
-            <div className="text-sm text-gray-600 mt-1">
-              Ausstehend
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-3xl">⭐</span>
-              <span className="text-sm text-gray-600">Admins</span>
-            </div>
-            <div className="text-2xl font-bold">
-              {tripMembers.filter(m => m.role === 'owner' || m.role === 'admin').length}
-            </div>
-            <div className="text-sm text-gray-600 mt-1">
-              Verwalter
-            </div>
-          </div>
-        </div>
-
-        {/* Team Members List */}
-        <div className="bg-white rounded-lg shadow">
-          <div className="p-6 border-b">
-            <h3 className="font-semibold text-lg">Team-Mitglieder</h3>
-          </div>
-          <div className="p-6">
-            {tripMembers.length === 0 ? (
-              <div className="text-center py-12">
-                <span className="text-6xl mb-4 block">👥</span>
-                <p className="text-gray-600">Noch keine Mitglieder</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {tripMembers.map((member) => (
-                  <div
-                    key={member.id}
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-                  >
-                    <div className="flex items-center gap-4">
-                      {/* Avatar */}
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-white font-bold text-lg">
-                        {member.user?.name?.charAt(0).toUpperCase() || '?'}
-                      </div>
-
-                      {/* User Info */}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{member.user?.name || 'Unknown'}</span>
-                          {member.user_id === currentUser?.id && (
-                            <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded">
-                              Du
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-sm text-gray-600">{member.user?.email}</div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          Beigetreten: {new Date(member.joined_at).toLocaleDateString('de-DE')}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Role & Actions */}
-                    <div className="flex items-center gap-3">
-                      {/* Role Badge */}
-                      {isOwnerOrAdmin && member.user_id !== currentUser?.id && member.role !== 'owner' ? (
-                        <select
-                          value={member.role}
-                          onChange={(e) => updateMemberRole(member.id, e.target.value)}
-                          className={`px-3 py-1 rounded text-sm font-medium ${getMemberRoleBadgeColor(member.role)}`}
-                        >
-                          <option value="admin">⭐ Admin</option>
-                          <option value="member">👤 Mitglied</option>
-                        </select>
-                      ) : (
-                        <span className={`px-3 py-1 rounded text-sm font-medium ${getMemberRoleBadgeColor(member.role)}`}>
-                          {getMemberRoleLabel(member.role)}
-                        </span>
-                      )}
-
-                      {/* Remove Button */}
-                      {isOwnerOrAdmin && member.user_id !== currentUser?.id && member.role !== 'owner' && (
-                        <button
-                          onClick={() => removeMember(member.id, member.user?.name || 'Mitglied')}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded"
-                          title="Mitglied entfernen"
-                        >
-                          🗑️
-                        </button>
-                      )}
-                    </div>
+        <div className="p-6 space-y-3">
+          {tripMembers
+            .filter(m => m.trip_id === currentTrip?.id)
+            .map(member => {
+              const user = users.find(u => u.id === member.user_id)
+              return (
+                <div key={member.user_id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                  <div className="text-2xl">
+                    {member.role === 'owner' ? '👑' : member.role === 'admin' ? '⭐' : '👤'}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  <div className="flex-1">
+                    <div className="font-medium">{user?.name || 'Unbekannt'}</div>
+                    <div className="text-sm text-gray-600">{user?.email}</div>
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {member.role === 'owner' ? 'Owner' : 
+                     member.role === 'admin' ? 'Admin' : 'Member'}
+                  </div>
+                </div>
+              )
+            })}
         </div>
+      </div>
+
+      {isOwnerOrAdmin && currentUser?.role === 'admin' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <p className="text-sm text-blue-800">
+            💡 <strong>Mitglieder verwalten?</strong> Gehe zum{' '}
+            <button
+              onClick={() => setActiveTab('admin')}
+              className="underline font-medium hover:text-blue-900"
+            >
+              Admin-Panel
+            </button>
+            {' '}→ Reise-Mitglieder Tab
+          </p>
+        </div>
+      )}
+
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <h4 className="font-medium mb-2">Rollen-Erklärung:</h4>
+        <ul className="space-y-1 text-sm text-gray-700">
+          <li>• <strong>👑 Owner:</strong> Volle Kontrolle über die Reise</li>
+          <li>• <strong>⭐ Admin:</strong> Kann Mitglieder einladen und verwalten</li>
+          <li>• <strong>👤 Member:</strong> Kann teilnehmen und Ausgaben erfassen</li>
+        </ul>
+      </div>
+    </div>
+  )
+}
+   
 
         {/* Pending Invitations */}
         {isOwnerOrAdmin && pendingInvitations.length > 0 && (
@@ -4624,100 +4632,208 @@ const renderSettlementTab = () => {
   )
 }
   const renderAdminTab = () => {
-    if (currentUser?.role !== 'admin') {
-      return (
-        <div className="text-center py-12">
-          <p className="text-gray-600">Nur für Administratoren zugänglich</p>
-        </div>
-      )
-    }
-
+  if (currentUser?.role !== 'admin') {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Admin Panel</h2>
-          <button
-            onClick={() => setShowAddUserModal(true)}
-            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
-          >
-            + Benutzer erstellen
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-3xl mb-2">👥</div>
-            <div className="text-2xl font-bold">{users.length}</div>
-            <div className="text-sm text-gray-600">Benutzer</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-3xl mb-2">🌍</div>
-            <div className="text-2xl font-bold">{allUserTrips.length}</div>
-            <div className="text-sm text-gray-600">Reisen</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="text-3xl mb-2">⚙️</div>
-            <div className="text-2xl font-bold">v2.0</div>
-            <div className="text-sm text-gray-600">Version</div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow">
-          <div className="p-6 border-b">
-            <h3 className="font-semibold text-lg">Alle Benutzer</h3>
-          </div>
-          <div className="p-6">
-            <table className="w-full">
-              <thead>
-                <tr className="text-left border-b">
-                  <th className="pb-3">Name</th>
-                  <th className="pb-3">Email</th>
-                  <th className="pb-3">Rolle</th>
-                  <th className="pb-3">Status</th>
-                  <th className="pb-3">Aktionen</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map(user => (
-                  <tr key={user.id} className="border-b last:border-0">
-                    <td className="py-3">{user.name}</td>
-                    <td className="py-3">{user.email}</td>
-                    <td className="py-3">
-                      <span className={`px-2 py-1 rounded text-sm ${
-                        user.role === 'admin' 
-                          ? 'bg-purple-100 text-purple-700' 
-                          : 'bg-gray-100 text-gray-700'
-                      }`}>
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      <span className={`px-2 py-1 rounded text-sm ${
-                        user.is_active 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-red-100 text-red-700'
-                      }`}>
-                        {user.is_active ? 'Aktiv' : 'Inaktiv'}
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      <button
-                        onClick={() => deleteUser(user.id)}
-                        disabled={user.id === currentUser.id}
-                        className="px-3 py-1 bg-red-50 text-red-700 rounded hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Löschen
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      <div className="text-center py-12">
+        <p className="text-gray-600">Nur für Administratoren zugänglich</p>
       </div>
     )
   }
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold">Admin Panel</h2>
+
+      {/* Tab Navigation */}
+      <div className="flex gap-2 border-b">
+        <button
+          onClick={() => setAdminPanelTab('users')}
+          className={`px-6 py-3 font-medium border-b-2 transition-colors ${
+            adminPanelTab === 'users'
+              ? 'border-teal-600 text-teal-600'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          👥 Benutzer
+        </button>
+        <button
+          onClick={() => setAdminPanelTab('trip-members')}
+          className={`px-6 py-3 font-medium border-b-2 transition-colors ${
+            adminPanelTab === 'trip-members'
+              ? 'border-teal-600 text-teal-600'
+              : 'border-transparent text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          🗺️ Reise-Mitglieder
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      {adminPanelTab === 'users' ? (
+        <div>
+          <button
+            onClick={() => setShowAddUserModal(true)}
+            className="mb-4 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+          >
+            + Benutzer erstellen
+          </button>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="text-3xl mb-2">👥</div>
+              <div className="text-2xl font-bold">{users.length}</div>
+              <div className="text-sm text-gray-600">Benutzer</div>
+            </div>
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="text-3xl mb-2">🌍</div>
+              <div className="text-2xl font-bold">{allUserTrips.length}</div>
+              <div className="text-sm text-gray-600">Reisen</div>
+            </div>
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="text-3xl mb-2">⚙️</div>
+              <div className="text-2xl font-bold">v2.1</div>
+              <div className="text-sm text-gray-600">Version</div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow">
+            <div className="p-6 border-b">
+              <h3 className="font-semibold text-lg">Alle Benutzer</h3>
+            </div>
+            <div className="p-6 overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-left border-b">
+                    <th className="pb-3">Name</th>
+                    <th className="pb-3">Email</th>
+                    <th className="pb-3">Rolle</th>
+                    <th className="pb-3">Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map(user => (
+                    <tr key={user.id} className="border-b last:border-0">
+                      <td className="py-3">{user.name}</td>
+                      <td className="py-3">{user.email}</td>
+                      <td className="py-3">
+                        <span className={`px-2 py-1 rounded text-sm ${
+                          user.role === 'admin' 
+                            ? 'bg-purple-100 text-purple-700' 
+                            : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {user.role === 'admin' ? '⭐ Admin' : '👤 Member'}
+                        </span>
+                      </td>
+                      <td className="py-3">
+                        {user.id !== currentUser?.id && (
+                          <button
+                            onClick={() => deleteUser(user.id)}
+                            className="text-red-600 hover:text-red-700 p-2"
+                          >
+                            🗑️
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Reise auswählen:</label>
+            <select
+              value={selectedTripForAdmin}
+              onChange={(e) => {
+                setSelectedTripForAdmin(e.target.value)
+                if (e.target.value) {
+                  loadTripMembers(e.target.value)
+                }
+              }}
+              className="w-full max-w-md px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+            >
+              <option value="">-- Reise wählen --</option>
+              {allUserTrips.map(trip => (
+                <option key={trip.id} value={trip.id}>
+                  {trip.flag} {trip.name} ({trip.destination})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {selectedTripForAdmin && (
+            <>
+              <button
+                onClick={() => setShowAddMemberToTripModal(true)}
+                className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
+              >
+                + Mitglied hinzufügen
+              </button>
+
+              <div className="bg-white rounded-lg shadow">
+                <div className="p-6 border-b">
+                  <h3 className="font-semibold text-lg">
+                    Mitglieder ({tripMembers.filter(m => m.trip_id === selectedTripForAdmin).length})
+                  </h3>
+                </div>
+                <div className="p-6 overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left border-b">
+                        <th className="pb-3">Name</th>
+                        <th className="pb-3">Email</th>
+                        <th className="pb-3">Rolle</th>
+                        <th className="pb-3">Aktionen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tripMembers
+                        .filter(m => m.trip_id === selectedTripForAdmin)
+                        .map(member => {
+                          const user = users.find(u => u.id === member.user_id)
+                          return (
+                            <tr key={member.user_id} className="border-b last:border-0">
+                              <td className="py-3">{user?.name || 'Unbekannt'}</td>
+                              <td className="py-3">{user?.email || '-'}</td>
+                              <td className="py-3">
+                                <select
+                                  value={member.role}
+                                  onChange={(e) => updateMemberRole(selectedTripForAdmin, member.user_id, e.target.value)}
+                                  className="px-2 py-1 border rounded text-sm"
+                                  disabled={member.role === 'owner' && member.user_id === currentUser?.id}
+                                >
+                                  <option value="owner">👑 Owner</option>
+                                  <option value="admin">⭐ Admin</option>
+                                  <option value="member">👤 Member</option>
+                                </select>
+                              </td>
+                              <td className="py-3">
+                                {member.user_id !== currentUser?.id && member.role !== 'owner' && (
+                                  <button
+                                    onClick={() => removeMemberFromTrip(selectedTripForAdmin, member.user_id)}
+                                    className="text-red-600 hover:text-red-700 p-2"
+                                  >
+                                    🗑️
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // 1️⃣ SCHRITT 1: Settlement-Tab in renderTabContent() hinzufügen
 // Ersetze in der renderTabContent() Funktion (Zeile ~2500):
@@ -6096,159 +6212,77 @@ const renderTabContent = () => {
     )
   }
 
-  const renderAddUserModal = () => {
-    if (!showAddUserModal) return null
+ const renderAddMemberToTripModal = () => {
+  if (!showAddMemberToTripModal) return null
 
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-          <h3 className="text-xl font-bold mb-4">Neuen Benutzer erstellen</h3>
-          
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Name *</label>
-              <input 
-                type="text"
-                placeholder="Max Mustermann"
-                value={newUser.name}
-                onChange={(e) => setNewUser({...newUser, name: e.target.value})}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-              />
-            </div>
+  const availableUsers = users.filter(user => 
+    !tripMembers.some(m => m.trip_id === selectedTripForAdmin && m.user_id === user.id)
+  )
 
-            <div>
-              <label className="block text-sm font-medium mb-2">E-Mail *</label>
-              <input 
-                type="email"
-                placeholder="email@beispiel.de"
-                value={newUser.email}
-                onChange={(e) => setNewUser({...newUser, email: e.target.value})}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Passwort *</label>
-              <div className="flex gap-2">
-                <input 
-                  type="password"
-                  placeholder="••••••••"
-                  value={newUser.password}
-                  onChange={(e) => setNewUser({...newUser, password: e.target.value})}
-                  className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const randomPw = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-4).toUpperCase()
-                    setNewUser({...newUser, password: randomPw})
-                  }}
-                  className="px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm"
-                  title="Zufälliges Passwort generieren"
-                >
-                  🎲
-                </button>
-              </div>
-              {newUser.password && (
-                <p className={`text-xs mt-1 ${
-                  newUser.password.length < 8 ? 'text-red-600' :
-                  newUser.password.length < 12 ? 'text-yellow-600' :
-                  'text-green-600'
-                }`}>
-                  {newUser.password.length < 8 ? '❌ Zu kurz (min. 8 Zeichen)' :
-                   newUser.password.length < 12 ? '⚠️ OK' :
-                   '✅ Stark'}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Rolle *</label>
-              <select
-                value={newUser.role}
-                onChange={(e) => setNewUser({...newUser, role: e.target.value as 'admin' | 'member'})}
-                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-              >
-                <option value="member">👤 Member (Standard)</option>
-                <option value="admin">⭐ Admin</option>
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                {newUser.role === 'admin' 
-                  ? '⭐ Kann alle Benutzer und Reisen verwalten' 
-                  : '👤 Kann an Reisen teilnehmen'}
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <h3 className="text-xl font-bold mb-4">Mitglied zur Reise hinzufügen</h3>
+        
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Benutzer *</label>
+            <select
+              value={memberToAdd}
+              onChange={(e) => setMemberToAdd(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
+            >
+              <option value="">-- Benutzer auswählen --</option>
+              {availableUsers.map(user => (
+                <option key={user.id} value={user.id}>
+                  {user.name} ({user.email})
+                </option>
+              ))}
+            </select>
+            {availableUsers.length === 0 && (
+              <p className="text-sm text-gray-500 mt-1">
+                Alle Benutzer sind bereits Mitglied dieser Reise
               </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Zu Reisen hinzufügen (optional)
-              </label>
-              <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3">
-                {allUserTrips.filter(t => t.status === 'active').length === 0 ? (
-                  <p className="text-sm text-gray-500">Keine aktiven Reisen vorhanden</p>
-                ) : (
-                  allUserTrips.filter(t => t.status === 'active').map(trip => (
-                    <label key={trip.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={newUser.addToTrips.includes(trip.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setNewUser({
-                              ...newUser,
-                              addToTrips: [...newUser.addToTrips, trip.id]
-                            })
-                          } else {
-                            setNewUser({
-                              ...newUser,
-                              addToTrips: newUser.addToTrips.filter(id => id !== trip.id)
-                            })
-                          }
-                        }}
-                        className="w-4 h-4"
-                      />
-                      <span className="text-sm">
-                        {trip.flag} {trip.name} ({trip.destination})
-                      </span>
-                    </label>
-                  ))
-                )}
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                💡 Der Benutzer wird automatisch als Member zu den ausgewählten Reisen hinzugefügt
-              </p>
-            </div>
+            )}
           </div>
 
-          <div className="flex gap-3 mt-6">
-            <button 
-              onClick={() => {
-                setShowAddUserModal(false)
-                setNewUser({ 
-                  email: '', 
-                  password: '', 
-                  name: '',
-                  role: 'member',
-                  addToTrips: []
-                })
-              }}
-              className="flex-1 px-6 py-2 border rounded-lg hover:bg-gray-50"
+          <div>
+            <label className="block text-sm font-medium mb-2">Rolle *</label>
+            <select
+              value={memberRoleToAdd}
+              onChange={(e) => setMemberRoleToAdd(e.target.value as any)}
+              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
             >
-              Abbrechen
-            </button>
-            <button 
-              onClick={createUser}
-              disabled={loadingAction}
-              className="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
-            >
-              {loadingAction ? 'Erstelle...' : 'Erstellen'}
-            </button>
+              <option value="member">👤 Member</option>
+              <option value="admin">⭐ Admin</option>
+              <option value="owner">👑 Owner</option>
+            </select>
           </div>
         </div>
-      </div>
-    )
-  }
 
+        <div className="flex gap-3 mt-6">
+          <button 
+            onClick={() => {
+              setShowAddMemberToTripModal(false)
+              setMemberToAdd('')
+              setMemberRoleToAdd('member')
+            }}
+            className="flex-1 px-6 py-2 border rounded-lg hover:bg-gray-50"
+          >
+            Abbrechen
+          </button>
+          <button 
+            onClick={addMemberToTrip}
+            disabled={loadingAction || !memberToAdd}
+            className="flex-1 bg-teal-600 text-white px-6 py-2 rounded-lg hover:bg-teal-700 disabled:opacity-50"
+          >
+            {loadingAction ? 'Füge hinzu...' : 'Hinzufügen'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
   // ========== MAIN RENDER ==========
   
   if (isLoading) {
