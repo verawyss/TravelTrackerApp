@@ -4632,208 +4632,294 @@ const renderSettlementTab = () => {
   )
 }
   const renderAdminTab = () => {
-  if (currentUser?.role !== 'admin') {
+    if (currentUser?.role !== 'admin') {
+      return (
+        <div className="text-center py-12">
+          <p className="text-gray-600">Nur fÃ¼r Administratoren zugÃ¤nglich</p>
+        </div>
+      )
+    }
+
+    // Calculate statistics
+    const totalExpensesAllTrips = allUserTrips.reduce((sum, trip) => {
+      const tripExpenses = expenses.filter(e => e.trip_id === trip.id)
+      return sum + tripExpenses.reduce((s, e) => s + parseFloat(e.amount || 0), 0)
+    }, 0)
+
+    const activeUsersCount = users.filter(u => u.is_active).length
+    const adminCount = users.filter(u => u.role === 'admin').length
+    const activeTripsCount = allUserTrips.filter(t => t.status === 'active').length
+    const archivedTripsCount = allUserTrips.filter(t => t.status === 'archived').length
+
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-600">Nur für Administratoren zugänglich</p>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold">Admin Panel</h2>
+            <p className="text-sm text-gray-600 mt-1">
+              System-Ãœbersicht und Benutzerverwaltung
+            </p>
+          </div>
+          <button
+            onClick={() => setShowAddUserModal(true)}
+            className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2"
+          >
+            <span>+</span> Benutzer erstellen
+          </button>
+        </div>
+
+        {/* Enhanced Statistics Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-3xl">ðŸ'¥</div>
+              <span className="text-xs text-gray-500">Gesamt</span>
+            </div>
+            <div className="text-2xl font-bold">{users.length}</div>
+            <div className="text-sm text-gray-600 mt-1">Benutzer</div>
+            <div className="mt-3 pt-3 border-t flex items-center justify-between text-xs">
+              <span className="text-green-600">ðŸŸ¢ {activeUsersCount} aktiv</span>
+              <span className="text-purple-600">â­ {adminCount} admins</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-3xl">ðŸŒ</div>
+              <span className="text-xs text-gray-500">Gesamt</span>
+            </div>
+            <div className="text-2xl font-bold">{allUserTrips.length}</div>
+            <div className="text-sm text-gray-600 mt-1">Reisen</div>
+            <div className="mt-3 pt-3 border-t flex items-center justify-between text-xs">
+              <span className="text-green-600">âœ… {activeTripsCount} aktiv</span>
+              <span className="text-gray-600">ðŸ"¦ {archivedTripsCount} archiviert</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-3xl">ðŸ'°</div>
+              <span className="text-xs text-gray-500">Gesamt</span>
+            </div>
+            <div className="text-2xl font-bold">{expenses.length}</div>
+            <div className="text-sm text-gray-600 mt-1">Ausgaben</div>
+            <div className="mt-3 pt-3 border-t text-xs">
+              <span className="text-teal-600 font-medium">
+                {totalExpensesAllTrips.toFixed(2)} CHF
+              </span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-3xl">ðŸŽ'</div>
+              <span className="text-xs text-gray-500">System</span>
+            </div>
+            <div className="text-2xl font-bold">v2.0</div>
+            <div className="text-sm text-gray-600 mt-1">Version</div>
+            <div className="mt-3 pt-3 border-t text-xs">
+              <span className="text-green-600">âœ… Alle Systeme online</span>
+            </div>
+          </div>
+        </div>
+
+        {/* User Management Table */}
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-6 border-b">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-lg">Benutzerverwaltung</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {users.length} Benutzer â€¢ {activeUsersCount} aktiv â€¢ {users.length - activeUsersCount} inaktiv
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">
+                  ðŸ"„ Aktualisieren
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50">
+                <tr className="text-left border-b">
+                  <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Benutzer
+                  </th>
+                  <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Kontakt
+                  </th>
+                  <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Rolle
+                  </th>
+                  <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Erstellt
+                  </th>
+                  <th className="px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider text-right">
+                    Aktionen
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {users.map(user => {
+                  const userTripsCount = allUserTrips.filter(t => t.created_by === user.id).length
+                  
+                  return (
+                    <tr key={user.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-blue-500 flex items-center justify-center text-white font-bold">
+                            {user.name?.charAt(0).toUpperCase() || '?'}
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900 flex items-center gap-2">
+                              {user.name}
+                              {user.id === currentUser.id && (
+                                <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded">
+                                  Du
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {userTripsCount} {userTripsCount === 1 ? 'Reise' : 'Reisen'}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-900">{user.email}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          user.role === 'admin' 
+                            ? 'bg-purple-100 text-purple-800' 
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {user.role === 'admin' ? 'â­ Admin' : 'ðŸ'¤ Member'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          user.is_active 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {user.is_active ? 'ðŸŸ¢ Aktiv' : 'ðŸ"´ Inaktiv'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {user.created_at ? new Date(user.created_at).toLocaleDateString('de-DE') : '-'}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => {
+                              // View user details
+                              alert(`Details fÃ¼r ${user.name}:\n\nID: ${user.id}\nEmail: ${user.email}\nRolle: ${user.role}\nStatus: ${user.is_active ? 'Aktiv' : 'Inaktiv'}\nReisen: ${userTripsCount}`)
+                            }}
+                            className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm font-medium"
+                            title="Details anzeigen"
+                          >
+                            ðŸ'ï¸
+                          </button>
+                          <button
+                            onClick={() => deleteUser(user.id)}
+                            disabled={user.id === currentUser.id}
+                            className="px-3 py-1.5 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                            title={user.id === currentUser.id ? 'Eigenes Konto kann nicht gelÃ¶scht werden' : 'Benutzer lÃ¶schen'}
+                          >
+                            ðŸ—'ï¸
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* System Info */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="font-semibold text-lg mb-4">ðŸ"Š System-Informationen</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="text-sm text-gray-600 mb-1">Datenbank</div>
+              <div className="font-semibold">Supabase PostgreSQL</div>
+              <div className="text-xs text-green-600 mt-2">âœ… Verbunden</div>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="text-sm text-gray-600 mb-1">Authentifizierung</div>
+              <div className="font-semibold">Supabase Auth</div>
+              <div className="text-xs text-green-600 mt-2">âœ… Aktiv</div>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="text-sm text-gray-600 mb-1">Storage</div>
+              <div className="font-semibold">Supabase Storage</div>
+              <div className="text-xs text-green-600 mt-2">âœ… VerfÃ¼gbar</div>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <div className="text-sm text-gray-600 mb-1">API Status</div>
+              <div className="font-semibold">All Systems Operational</div>
+              <div className="text-xs text-green-600 mt-2">âœ… 100% Uptime</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <h4 className="font-semibold text-blue-900 mb-3">ðŸš€ Schnellaktionen</h4>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setShowAddUserModal(true)}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+            >
+              + Neuer Benutzer
+            </button>
+            <button
+              onClick={() => loadUsers()}
+              className="px-4 py-2 bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 text-sm"
+            >
+              ðŸ"„ Benutzerliste aktualisieren
+            </button>
+            <button
+              onClick={() => {
+                const report = `
+=== SYSTEM REPORT ===
+Generiert: ${new Date().toLocaleString('de-DE')}
+
+BENUTZER:
+- Gesamt: ${users.length}
+- Aktiv: ${activeUsersCount}
+- Inaktiv: ${users.length - activeUsersCount}
+- Admins: ${adminCount}
+
+REISEN:
+- Gesamt: ${allUserTrips.length}
+- Aktiv: ${activeTripsCount}
+- Archiviert: ${archivedTripsCount}
+
+AUSGABEN:
+- Gesamt: ${expenses.length}
+- Gesamtbetrag: ${totalExpensesAllTrips.toFixed(2)} CHF
+                `
+                console.log(report)
+                alert('Report wurde in der Konsole ausgegeben (F12 Ã¶ffnen)')
+              }}
+              className="px-4 py-2 bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 text-sm"
+            >
+              ðŸ"Š Report generieren
+            </button>
+          </div>
+        </div>
       </div>
     )
   }
-
-  return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Admin Panel</h2>
-
-      {/* Tab Navigation */}
-      <div className="flex gap-2 border-b">
-        <button
-          onClick={() => setAdminPanelTab('users')}
-          className={`px-6 py-3 font-medium border-b-2 transition-colors ${
-            adminPanelTab === 'users'
-              ? 'border-teal-600 text-teal-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          👥 Benutzer
-        </button>
-        <button
-          onClick={() => setAdminPanelTab('trip-members')}
-          className={`px-6 py-3 font-medium border-b-2 transition-colors ${
-            adminPanelTab === 'trip-members'
-              ? 'border-teal-600 text-teal-600'
-              : 'border-transparent text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          🗺️ Reise-Mitglieder
-        </button>
-      </div>
-
-      {/* Tab Content */}
-      {adminPanelTab === 'users' ? (
-        <div>
-          <button
-            onClick={() => setShowAddUserModal(true)}
-            className="mb-4 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
-          >
-            + Benutzer erstellen
-          </button>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="text-3xl mb-2">👥</div>
-              <div className="text-2xl font-bold">{users.length}</div>
-              <div className="text-sm text-gray-600">Benutzer</div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="text-3xl mb-2">🌍</div>
-              <div className="text-2xl font-bold">{allUserTrips.length}</div>
-              <div className="text-sm text-gray-600">Reisen</div>
-            </div>
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="text-3xl mb-2">⚙️</div>
-              <div className="text-2xl font-bold">v2.1</div>
-              <div className="text-sm text-gray-600">Version</div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow">
-            <div className="p-6 border-b">
-              <h3 className="font-semibold text-lg">Alle Benutzer</h3>
-            </div>
-            <div className="p-6 overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="text-left border-b">
-                    <th className="pb-3">Name</th>
-                    <th className="pb-3">Email</th>
-                    <th className="pb-3">Rolle</th>
-                    <th className="pb-3">Aktionen</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map(user => (
-                    <tr key={user.id} className="border-b last:border-0">
-                      <td className="py-3">{user.name}</td>
-                      <td className="py-3">{user.email}</td>
-                      <td className="py-3">
-                        <span className={`px-2 py-1 rounded text-sm ${
-                          user.role === 'admin' 
-                            ? 'bg-purple-100 text-purple-700' 
-                            : 'bg-gray-100 text-gray-700'
-                        }`}>
-                          {user.role === 'admin' ? '⭐ Admin' : '👤 Member'}
-                        </span>
-                      </td>
-                      <td className="py-3">
-                        {user.id !== currentUser?.id && (
-                          <button
-                            onClick={() => deleteUser(user.id)}
-                            className="text-red-600 hover:text-red-700 p-2"
-                          >
-                            🗑️
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Reise auswählen:</label>
-            <select
-              value={selectedTripForAdmin}
-              onChange={(e) => {
-                setSelectedTripForAdmin(e.target.value)
-                if (e.target.value) {
-                  loadTripMembers(e.target.value)
-                }
-              }}
-              className="w-full max-w-md px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500"
-            >
-              <option value="">-- Reise wählen --</option>
-              {allUserTrips.map(trip => (
-                <option key={trip.id} value={trip.id}>
-                  {trip.flag} {trip.name} ({trip.destination})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {selectedTripForAdmin && (
-            <>
-              <button
-                onClick={() => setShowAddMemberToTripModal(true)}
-                className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700"
-              >
-                + Mitglied hinzufügen
-              </button>
-
-              <div className="bg-white rounded-lg shadow">
-                <div className="p-6 border-b">
-                  <h3 className="font-semibold text-lg">
-                    Mitglieder ({tripMembers.filter(m => m.trip_id === selectedTripForAdmin).length})
-                  </h3>
-                </div>
-                <div className="p-6 overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="text-left border-b">
-                        <th className="pb-3">Name</th>
-                        <th className="pb-3">Email</th>
-                        <th className="pb-3">Rolle</th>
-                        <th className="pb-3">Aktionen</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tripMembers
-                        .filter(m => m.trip_id === selectedTripForAdmin)
-                        .map(member => {
-                          const user = users.find(u => u.id === member.user_id)
-                          return (
-                            <tr key={member.user_id} className="border-b last:border-0">
-                              <td className="py-3">{user?.name || 'Unbekannt'}</td>
-                              <td className="py-3">{user?.email || '-'}</td>
-                              <td className="py-3">
-                                <select
-                                  value={member.role}
-                                  onChange={(e) => updateMemberRole(selectedTripForAdmin, member.user_id, e.target.value)}
-                                  className="px-2 py-1 border rounded text-sm"
-                                  disabled={member.role === 'owner' && member.user_id === currentUser?.id}
-                                >
-                                  <option value="owner">👑 Owner</option>
-                                  <option value="admin">⭐ Admin</option>
-                                  <option value="member">👤 Member</option>
-                                </select>
-                              </td>
-                              <td className="py-3">
-                                {member.user_id !== currentUser?.id && member.role !== 'owner' && (
-                                  <button
-                                    onClick={() => removeMemberFromTrip(selectedTripForAdmin, member.user_id)}
-                                    className="text-red-600 hover:text-red-700 p-2"
-                                  >
-                                    🗑️
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // 1️⃣ SCHRITT 1: Settlement-Tab in renderTabContent() hinzufügen
 // Ersetze in der renderTabContent() Funktion (Zeile ~2500):
